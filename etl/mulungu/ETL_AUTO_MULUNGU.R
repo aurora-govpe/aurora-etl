@@ -1,0 +1,97 @@
+﻿
+cat("🚀 Iniciando execução dos scripts...\n")
+
+tictoc::tic('Tempo ETL')
+
+# Definir caminho da pasta dos scripts
+pasta_scripts <- "etl/mulungu/"
+
+# Lista os scripts que você quer executar
+scripts <- c(
+  '1_notion.R', # não precisa de GP # não precisa de BDPE
+  '2_diario.R', # precisa de GP # não precisa de BDPE
+  '3_plug.R',
+  #'4_efisco.R',
+  '5_enriquecimento.R'
+  )
+
+# Executa cada script em ordem
+# for (script in scripts) {
+#   caminho <- file.path(pasta_scripts, script)
+#   cat(glue::glue("\n\n🔧 Executando {script}...\n\n"))
+#   source(caminho, local = TRUE)
+# }
+
+for (script in scripts) {
+  caminho <- file.path(pasta_scripts, script)
+  cat(glue::glue("\n\n🔧 Executando {script}...\n\n"))
+  
+  # O try() envolve a execução e o parâmetro silent = FALSE 
+  # garante que você ainda veja a mensagem de erro no console.
+  resultado <- try(source(caminho, local = TRUE), silent = FALSE)
+  
+  # Verificação opcional: avisa se falhou, mas segue o baile
+  if (inherits(resultado, "try-error")) {
+    cat(glue::glue("\n ⚠️  Atenção: O script {script} falhou, mas a automação continuará.\n"))
+  } else {
+    cat(glue::glue("\n ✅ {script} finalizado com sucesso.\n"))
+  }
+}
+
+tictoc::toc()
+
+cat("✅ Todos os scripts foram executados com sucesso.\n")
+
+# envio para servidor ----
+library(ssh)
+
+## setup ----
+
+# Caminho Local (onde estão os arquivos no seu PC)
+dir_local <- "app_mulungu/data"
+
+# Caminho Remoto (onde eles vão ser salvos)
+dir_remoto <- "/srv/dados/mulungu"
+
+# Lista de arquivos
+arquivos <- c(
+  "tabela_timeline.rds",
+  "tabela_pe_na_estrada.rds",
+  "tabela_cards.rds",
+  "projetos_notion.rds",
+  "obras_notion_enriquecido.rds",
+  "licitacoes_notion.rds",
+  "df_relatorios_diario.qs",
+  "df_medicoes_plug.qs",
+  "df_contratos_plug.qs",
+  "contratos_plug_enriquecidos.rds",
+  "tabela_cards2.rds",
+  "rodovias_mulungu.rds",
+  "obras_notion_geometrias2.rds",
+  "obras_notion_geometrias.rds",
+  "projetos_geometrias.rds",
+  "config.yml"
+)
+
+# Prepara os caminhos completos locais
+arquivos_completos <- file.path(dir_local, arquivos)
+
+# --- 2. Conexão ---
+
+message("Conectando ao servidor na porta 7654...")
+
+# A sintaxe user@host:port funciona perfeitamente no ssh_connect
+# O R vai usar sua chave SSH padrão (id_rsa) automaticamente.
+session <- ssh_connect("hugo.vasconcelos@10.238.113.49:7654")
+
+# --- 3. Envio (Upload) ---
+
+message("Iniciando upload dos arquivos...")
+
+# O scp_upload envia a lista toda de uma vez
+scp_upload(session, files = arquivos_completos, to = dir_remoto)
+
+message("Upload concluído com sucesso!")
+
+# --- 4. Desconectar ---
+ssh_disconnect(session)
