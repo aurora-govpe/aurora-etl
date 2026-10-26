@@ -28,7 +28,13 @@ scripts <- c(
   'fiscal/etl_op_cred.R',
   'fiscal/etl_execucao_bdpe.R',
   'etl_cozinhas.R',
-  'etl_PCP.R'
+  'etl_PCP.R',
+  
+  # Bases de Conversao Parquet, REGIC e Indicadores Nacionais
+  'municipios/etl_converter_rds_para_parquet.R',
+  'regic/regic_main.R',
+  'municipios/etl_indicadores_ufs.R',
+  'municipios/etl_indicadores_regioes_br.R'
   
   #'etl_carga_servidor.R'
   #'

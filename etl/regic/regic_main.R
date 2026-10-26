@@ -1,4 +1,4 @@
-﻿# ==============================================================================
+# ==============================================================================
 # PAINEL DE DESENVOLVIMENTO REGIONAL - INTELIGÊNCIA LOGÍSTICA E TERRITORIAL
 # Baseado na metodologia REGIC 2018 (IBGE)
 # ==============================================================================
@@ -10,13 +10,19 @@ library(readxl)
 library(tidygraph)
 library(janitor)
 
+# paths ----
+if (file.exists("R/paths.R")) source("R/paths.R") else if (file.exists("paths.R")) source("paths.R") else if (file.exists("../paths.R")) source("../paths.R") else if (file.exists("etl/paths.R")) source("etl/paths.R")
+
 # ---- 2. Autenticação e Configuração ----
-drive_auth(path = "data/r-sheets-hugo-0788cc358cb5.json")
+auth_path <- if (file.exists(file.path(DIR_RAW_AURORA, "r-sheets-hugo-0788cc358cb5.json"))) file.path(DIR_RAW_AURORA, "r-sheets-hugo-0788cc358cb5.json") else "data/r-sheets-hugo-0788cc358cb5.json"
+if (file.exists(auth_path)) drive_auth(path = auth_path)
 
-pasta_destino <- "data/ibge/regic"
+pasta_destino <- file.path(DIR_RAW_AURORA, "ibge/regic")
 dir.create(pasta_destino, recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(DIR_OUT_AURORA, "parquet"), recursive = TRUE, showWarnings = FALSE)
 
-df_indicadores_municipais <- arrow::read_parquet('data/indicadores/df_indicadores.parquet')
+ind_parquet_path <- if (file.exists(file.path(DIR_OUT_AURORA, 'parquet/df_indicadores.parquet'))) file.path(DIR_OUT_AURORA, 'parquet/df_indicadores.parquet') else file.path(DIR_RAW_AURORA, 'indicadores/df_indicadores.parquet')
+df_indicadores_municipais <- arrow::read_parquet(ind_parquet_path)
 
 id_pasta <- "1frsM_iKvj-d01VWJHsQq3Hde7gaKyvJu"
 arquivos_alvo <- c(
@@ -76,12 +82,12 @@ df_arranjos_pe <- tibble::tribble(
   "2613701", "São Lourenço da Mata", "Arranjo Populacional do Recife/PE", "2611606"
 )
 
-write.csv2(df_arranjos_pe, "data/ibge/regic/arranjos_populacionais_pe.csv", row.names = FALSE)
+write.csv2(df_arranjos_pe, file.path(pasta_destino, "arranjos_populacionais_pe.csv"), row.names = FALSE)
 
 df_arranjos_pe %>%
   arrow::write_parquet(
-    "app_aurora_municipios/data/parquet/arranjos_populacionais_pe.parquet"
-    )
+    file.path(DIR_OUT_AURORA, "parquet/arranjos_populacionais_pe.parquet")
+  )
 
 df_pib_agregado <- df_pib_mun %>%
   left_join(df_arranjos_pe, by = "cod_ibge") %>%
@@ -228,11 +234,11 @@ painel_pe %>%
   print()
 
 painel_pe %>%
-  write.csv2('data/ibge/regic/regic_pe_main.csv', row.names = FALSE)
+  write.csv2(file.path(pasta_destino, 'regic_pe_main.csv'), row.names = FALSE)
 
 painel_pe %>%
   arrow::write_parquet(
-    'app_aurora_municipios/data/parquet/regic_pe_main.parquet'
+    file.path(DIR_OUT_AURORA, 'parquet/regic_pe_main.parquet')
   )
 
 # REDES ----
@@ -300,5 +306,5 @@ df_redes_tematicas_pe <- df_fluxos_intra_pe %>%
 
 df_redes_tematicas_pe %>%
   arrow::write_parquet(
-    'app_aurora_municipios/data/parquet/regic_pe_fluxos.parquet'
+    file.path(DIR_OUT_AURORA, 'parquet/regic_pe_fluxos.parquet')
   )

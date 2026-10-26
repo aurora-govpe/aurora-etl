@@ -1,27 +1,30 @@
-﻿library(arrow)
+library(arrow)
 library(readxl)
 library(janitor)
 library(tidyverse)
 
+# paths ----
+if (file.exists("R/paths.R")) source("R/paths.R") else if (file.exists("paths.R")) source("paths.R") else if (file.exists("../paths.R")) source("../paths.R") else if (file.exists("etl/paths.R")) source("etl/paths.R")
+
 # 1. Caminhos -----------------------------------------------------------------
-caminho_regioes         <- "data/educacao/IDEB/divulgacao_regioes_ufs_ideb_2025.xlsx"
-caminho_brasil          <- "data/educacao/IDEB/divulgacao_brasil_ideb_2025.xlsx"
-caminho_creches         <- "data/educacao/Infantil/Taxa bruta de matrículas em creches.xlsx"
-caminho_pre_escola      <- "data/educacao/Infantil/Taxa bruta de matrículas em pré-escola.xlsx"
-caminho_liq_creches     <- "data/educacao/Infantil/Taxa líquida de matrículas em creches.xlsx"
-caminho_liq_pre_escola  <- "data/educacao/Infantil/Taxa líquida de matrículas em pré-escola.xlsx"
-caminho_abandono        <- "data/educacao/Indicadores Educacionais/Taxa de abandono no ensino médio segundo dependência administrativa.xlsx"
-caminho_distorcao       <- "data/educacao/Indicadores Educacionais/Taxa de distorção idade-série no ensino médio segundo dependência administrativa.xlsx"
-caminho_escolarizacao   <- "data/educacao/EM/Taxa de escolarização bruta e líquida no ensino médio.xlsx"
-caminho_cnuc            <- "data/meio ambiente/cnuc_2026_07.csv"
-caminho_mapbiomas       <- "data/meio ambiente/indicadores_mapbiomas.parquet"
-caminho_ibge            <- "data/ibge/df_indicadores_ibge_ufs_br.parquet"
+caminho_regioes         <- file.path(DIR_RAW_AURORA, "educacao/IDEB/divulgacao_regioes_ufs_ideb_2025.xlsx")
+caminho_brasil          <- file.path(DIR_RAW_AURORA, "educacao/IDEB/divulgacao_brasil_ideb_2025.xlsx")
+caminho_creches         <- file.path(DIR_RAW_AURORA, "educacao/Infantil/Taxa bruta de matrículas em creches.xlsx")
+caminho_pre_escola      <- file.path(DIR_RAW_AURORA, "educacao/Infantil/Taxa bruta de matrículas em pré-escola.xlsx")
+caminho_liq_creches     <- file.path(DIR_RAW_AURORA, "educacao/Infantil/Taxa líquida de matrículas em creches.xlsx")
+caminho_liq_pre_escola  <- file.path(DIR_RAW_AURORA, "educacao/Infantil/Taxa líquida de matrículas em pré-escola.xlsx")
+caminho_abandono        <- file.path(DIR_RAW_AURORA, "educacao/Indicadores Educacionais/Taxa de abandono no ensino médio segundo dependência administrativa.xlsx")
+caminho_distorcao       <- file.path(DIR_RAW_AURORA, "educacao/Indicadores Educacionais/Taxa de distorção idade-série no ensino médio segundo dependência administrativa.xlsx")
+caminho_escolarizacao   <- file.path(DIR_RAW_AURORA, "educacao/EM/Taxa de escolarização bruta e líquida no ensino médio.xlsx")
+caminho_cnuc            <- file.path(DIR_RAW_AURORA, "meio ambiente/cnuc_2026_07.csv")
+caminho_mapbiomas       <- file.path(DIR_RAW_AURORA, "meio ambiente/indicadores_mapbiomas.parquet")
+caminho_ibge            <- file.path(DIR_RAW_AURORA, "ibge/df_indicadores_ibge_ufs_br.parquet")
 
-caminho_consultas       <- "data/saude/Consultas Médicas por tipo de gestão.csv"
-caminho_exames          <- "data/saude/Exames (Procedimentos com Finalidade Diagnóstica) por tipo de gestão.csv"
-caminho_cirurgias       <- "data/saude/Procedimentos Cirúrgicos por tipo de gestão.csv"
+caminho_consultas       <- file.path(DIR_RAW_AURORA, "saude/Consultas Médicas por tipo de gestão.csv")
+caminho_exames          <- file.path(DIR_RAW_AURORA, "saude/Exames (Procedimentos com Finalidade Diagnóstica) por tipo de gestão.csv")
+caminho_cirurgias       <- file.path(DIR_RAW_AURORA, "saude/Procedimentos Cirúrgicos por tipo de gestão.csv")
 
-caminho_indicador       <- "data/indicadores/lista de indicadores.xlsx"
+caminho_indicador       <- file.path(DIR_RAW_AURORA, "indicadores/lista de indicadores.xlsx")
 
 # 2. Dicionários e Metadados --------------------------------------------------
 tb_regioes <- read_excel(caminho_indicador, sheet = "dic_Regioes") %>%
@@ -547,13 +550,9 @@ df_indicadores_regioes <- bind_rows(
 
 df_indicadores_regioes %>% glimpse()
 
-# Salvar ----
+# Salvar unificado ----
+dir.create(file.path(DIR_OUT_AURORA, "parquet"), recursive = TRUE, showWarnings = FALSE)
 df_indicadores_regioes %>%
   write_parquet(
-    'data/indicadores/df_indicadores_regioes.parquet'
-  )
-
-df_indicadores_regioes %>%
-  write_parquet(
-    'app_aurora_municipios/data/parquet/df_indicadores_regioes.parquet'
+    file.path(DIR_OUT_AURORA, 'parquet/df_indicadores_regioes.parquet')
   )
