@@ -1,0 +1,31 @@
+# Arquivos de dados e planilhas
+data/
+**/data/
+*.rds
+*.parquet
+*.qs
+*.qs2
+*.xlsx
+*.xls
+*.csv
+*.geojson
+*.shp
+*.shx
+*.dbf
+*.prj
+
+# Segredos e Tokens
+credentials.yml
+tokens.yml
+*.json
+
+# R / RStudio
+.Rproj.user
+.Rhistory
+.RData
+
+# Logs e Repomix
+logs/
+*.log
+repomix*.txt
+.DS_Store

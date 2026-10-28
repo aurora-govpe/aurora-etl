@@ -20,12 +20,15 @@ data/
 *.dbf
 *.prj
 
-# Chaves e Segredos
+# Chaves, Segredos e Tokens
 *.json
 credentials.yml
+tokens.yml
 
-# Logs e Temporários
+# Logs e Temporarios
 logs/
 *.log
 tmp/
 temp_*
+repomix*.txt
+.DS_Store
