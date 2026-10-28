@@ -1,8 +1,8 @@
-﻿# ==============================================================================
+# ==============================================================================
 # ETL: Conversão de Artefatos RDS para JSON (Backend Go - Aurora Fiscal)
 # Localização: etl/fiscal/etl_converter_rds_para_json.R
-# Objetivo: Ler os arquivos .rds do app_aurora_fiscal e exportar versões .json
-#           otimizadas para o backend de alta performance em Go.
+# Objetivo: Ler os arquivos .rds e exportar versões .json otimizadas
+#           para o backend em Go de alta performance.
 # ==============================================================================
 
 suppressPackageStartupMessages({
@@ -10,6 +10,17 @@ suppressPackageStartupMessages({
   library(geojsonsf)
   library(fs)
 })
+
+# Carregamento centralizado de caminhos
+if (file.exists("R/paths.R")) {
+  source("R/paths.R")
+} else if (file.exists("paths.R")) {
+  source("paths.R")
+} else if (file.exists("../paths.R")) {
+  source("../paths.R")
+} else if (file.exists("etl/paths.R")) {
+  source("etl/paths.R")
+}
 
 log_info <- function(msg) {
   cat(sprintf("[%s] [INFO] %s\n", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), msg))
@@ -23,25 +34,18 @@ log_error <- function(msg) {
   cat(sprintf("[%s] [ERROR] %s\n", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), msg))
 }
 
-# 1. Determina dinamicamente o caminho da pasta data do app_aurora_fiscal
-candidatos_pasta_data <- c(
-  "app_aurora_fiscal/data",
-  "../../app_aurora_fiscal/data",
-  file.path(getwd(), "app_aurora_fiscal/data")
-)
-
-pasta_data <- NULL
-for (caminho in candidatos_pasta_data) {
-  if (dir.exists(caminho)) {
-    pasta_data <- normalizePath(caminho, winslash = "/", mustWork = TRUE)
-    break
-  }
+# 1. Determina a pasta de dados (usando DIR_OUT_AURORA como padrão)
+pasta_data <- if (exists("DIR_OUT_AURORA") && dir.exists(DIR_OUT_AURORA)) {
+  DIR_OUT_AURORA
+} else if (dir.exists("C:/dados/aurora")) {
+  "C:/dados/aurora"
+} else if (dir.exists("data")) {
+  "data"
+} else {
+  stop("Não foi possível localizar o diretório de dados do Aurora.")
 }
 
-if (is.null(pasta_data)) {
-  stop("Não foi possível localizar o diretório 'app_aurora_fiscal/data'. Execute a partir da raiz do projeto.")
-}
-
+pasta_data <- normalizePath(pasta_data, winslash = "/", mustWork = TRUE)
 log_info(paste("Diretório de dados identificado:", pasta_data))
 
 # ------------------------------------------------------------------------------

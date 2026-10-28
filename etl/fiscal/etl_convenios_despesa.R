@@ -1,4 +1,4 @@
-﻿# 1. Pacotes ----
+# 1. Pacotes ----
 library(arrow)
 library(cli)
 library(DBI)
@@ -13,6 +13,19 @@ library(RJDBC)
 library(sf)
 library(stringr)
 library(tidyr)
+
+# Resolução de caminhos centralizados
+if (file.exists("R/paths.R")) {
+  source("R/paths.R")
+} else if (file.exists("paths.R")) {
+  source("paths.R")
+} else if (file.exists("../paths.R")) {
+  source("../paths.R")
+} else if (file.exists("etl/paths.R")) {
+  source("etl/paths.R")
+}
+
+dir_out <- if (exists("DIR_OUT_AURORA")) DIR_OUT_AURORA else "C:/dados/aurora"
 
 # Leitura dos programas finalísticos da planilha de cadastro
 cadastro_programas <- readxl::read_excel(
@@ -218,15 +231,15 @@ bridge_iniciativa_convenio <- dados_iniciativas_2 %>%
 
 # 3. Exportação dos arquivos finais
 dados_convenios_despesa_consolidado %>%
-  write_parquet('app_convenios_despesa/data/dados_convenios_despesa.parquet')
+  write_parquet(file.path(dir_out, 'dados_convenios_despesa.parquet'))
 
 dados_emendas %>% 
-  write_parquet('app_convenios_despesa/data/dados_emendas.parquet')
+  write_parquet(file.path(dir_out, 'dados_emendas.parquet'))
 
 # Exporta a Dimensão Iniciativas
 dim_iniciativas %>%
-  write_parquet('app_convenios_despesa/data/dim_iniciativas.parquet')
+  write_parquet(file.path(dir_out, 'dim_iniciativas.parquet'))
 
 # Exporta a Tabela Ponte
 bridge_iniciativa_convenio %>%
-  write_parquet('app_convenios_despesa/data/bridge_iniciativa_convenio.parquet')
+  write_parquet(file.path(dir_out, 'bridge_iniciativa_convenio.parquet'))
