@@ -156,8 +156,7 @@ dados_emendas <- dados_emendas_raw %>%
       .default = municipio
     ),
     # 1) Normaliza o nome do município no momento da limpeza
-    #municipio_norm = norm_mun(municipio), 
-    municipio_norm = municipio, 
+    municipio_norm = norm_mun(municipio), 
     objeto_original = objeto,
     objeto = if_else(is.na(objeto_simples) | objeto_simples == "", objeto_original, objeto_simples)
   ) %>%
@@ -174,6 +173,10 @@ write_parquet(dados_emendas, file.path(DIR_OUT_AURORA, "dados_emendas.parquet"))
 dados_emendas %>%
   filter(ano == year(today())) %>%
   saveRDS(file.path(DIR_OUT_AURORA, 'dados_emendas_atual.rds'))
+
+dados_emendas %>%
+  filter(ano == year(today())) %>%
+  write_parquet(file.path(DIR_OUT_AURORA, "dados_emendas_atual.parquet"))
 
 # controle de qualidade ----
 total_registros   <- nrow(dados_emendas)
