@@ -7,6 +7,11 @@
 
 is_linux <- Sys.info()[["sysname"]] == "Linux"
 
+# No Windows, garante o uso do backend OpenSSL para requisições HTTPS do libcurl
+if (!is_linux) {
+  Sys.setenv(CURL_SSL_BACKEND = "openssl")
+}
+
 # ------------------------------------------------------------------------------
 # 1. PLATAFORMA AURORA
 # ------------------------------------------------------------------------------
