@@ -1126,7 +1126,9 @@ projetos_geometrias <- projetos_sf %>%
 
 # salvar ----
 
-write_rds(base_mulungu_aurora, file.path(DIR_RAW_MULUNGU, "base_mulungu_aurora.rds"))
+# Base DER/Mulungu consumida pelo Aurora (etl_05_iniciativas_join.R)
+write_rds(base_mulungu_aurora, file.path(DIR_OUT_AURORA, "base_mulungu_aurora.rds"))
+write_rds(base_mulungu_aurora, file.path(DIR_RAW_AURORA, "base_mulungu_aurora.rds"))
 
 write_rds(contratos_plug_enriquecidos, file.path(DIR_RAW_MULUNGU, "contratos_plug_enriquecidos.rds")) # ok
 
@@ -1143,8 +1145,10 @@ write_rds(obras_notion_enriquecido, file.path(DIR_MULUNGU, "obras_notion_enrique
 write_rds(obras_notion_geometrias, file.path(DIR_MULUNGU, "obras_notion_geometrias.rds")) # ok
 
 write_rds(obras_notion_geometrias2, file.path(DIR_MULUNGU, "obras_notion_geometrias2.rds")) # ok
+write_rds(obras_notion_geometrias2, file.path(DIR_OUT_AURORA, "obras_notion_geometrias2.rds")) # Aurora ETL
 
 write_rds(projetos_geometrias, file.path(DIR_MULUNGU, "projetos_geometrias.rds")) # ok
+write_rds(projetos_geometrias, file.path(DIR_OUT_AURORA, "projetos_geometrias.rds")) # Aurora ETL
 
 write_rds(rodovias_mulungu, file.path(DIR_MULUNGU, "rodovias_mulungu.rds"))
 
