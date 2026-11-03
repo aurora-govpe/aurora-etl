@@ -1,4 +1,4 @@
-﻿# Carregando os pacotes necessários
+# Carregando os pacotes necessários
 library(tidyverse)  # Manipulação e visualização de dados
 library(arrow)      # Leitura/escrita de arquivos Parquet
 library(nanoarrow)  # Suporte para fluxos compatíveis com bancos de dados
@@ -15,6 +15,9 @@ library(vialactea)  # Biblioteca da SEME/SEPE
 library(plug)       # Biblioteca para acessar dados do Plug/Pbf (DER)
 library(diario)
 #library(RJDBC)      # Biblioteca específica para dados de BigData PE
+
+# Carregamento centralizado de caminhos
+if (file.exists("R/paths.R")) source("R/paths.R") else if (file.exists("paths.R")) source("paths.R") else if (file.exists("../../R/paths.R")) source("../../R/paths.R") else if (file.exists("etl/paths.R")) source("etl/paths.R")
 
 
 #' Liberar Memória de Objeto no Ambiente Global
@@ -423,20 +426,20 @@ etl_config <- tibble::tribble(
   ~nome_base, ~funcao_processamento, ~caminho_parquet, ~caminho_qs, ~tabela_destino, ~colunas_distribuicao,
   "Contratos no Plug",
   "processamento_plug_contratos",
-  "data/mulungu/plug_contratos.pqt",
-  "app_mulungu/data/df_contratos_plug.qs",
+  file.path(DIR_RAW_MULUNGU, "plug_contratos.pqt"),
+  file.path(DIR_MULUNGU, "df_contratos_plug.qs"),
   "plug_contratos",
   NULL,
   "Medições no Plug",
   "processamento_plug_medicoes",
-  "data/mulungu/plug_medicoes.pqt",
-  "app_mulungu/data/df_medicoes_plug.qs",
+  file.path(DIR_RAW_MULUNGU, "plug_medicoes.pqt"),
+  file.path(DIR_MULUNGU, "df_medicoes_plug.qs"),
   "plug_medicoes",
   NULL,
   "Relatórios do Diario de Obras",
   "processamento_diario_relatorios",
-  "data/mulungu/diariodeobras_relatorios.pqt",
-  "app_mulungu/data/df_relatorios_diario.qs",
+  file.path(DIR_RAW_MULUNGU, "diariodeobras_relatorios.pqt"),
+  file.path(DIR_MULUNGU, "df_relatorios_diario.qs"),
   "diariodeobras_relatorios",
   c("contrato", "contrato_obra", "contrato_supervisao")
 )

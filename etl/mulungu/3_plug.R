@@ -1,6 +1,9 @@
-﻿library(tidyverse)
+library(tidyverse)
 library(furrr)
 library(plug)
+
+# Carregamento centralizado de caminhos
+if (file.exists("R/paths.R")) source("R/paths.R") else if (file.exists("paths.R")) source("paths.R") else if (file.exists("../../R/paths.R")) source("../../R/paths.R") else if (file.exists("etl/paths.R")) source("etl/paths.R")
 
 contratos_plug_temp <- plug_download_base(
   #base_name = 'VW_InfoContratuais_View_Exp'
@@ -73,9 +76,9 @@ contratos_plug <- contratos_plug_raw %>%
 
 #contratos_plug %>% glimpse()
 
-write_rds(contratos_plug, "data/mulungu/contratos_plug.rds")  
+write_rds(contratos_plug, file.path(DIR_RAW_MULUNGU, "contratos_plug.rds"))  
 
-write_rds(medicoes_plug, "data/mulungu/medicoes_plug.rds")  
+write_rds(medicoes_plug, file.path(DIR_RAW_MULUNGU, "medicoes_plug.rds"))  
 
 
 

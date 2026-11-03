@@ -1,4 +1,4 @@
-﻿library(tidyverse)
+library(tidyverse)
 library(furrr)
 library(sf)
 library(pool)
@@ -7,12 +7,15 @@ library(vialactea)
 library(RPostgres)
 library(bslib)
 
+# Carregamento centralizado de caminhos
+if (file.exists("R/paths.R")) source("R/paths.R") else if (file.exists("paths.R")) source("paths.R") else if (file.exists("../../R/paths.R")) source("../../R/paths.R") else if (file.exists("etl/paths.R")) source("etl/paths.R")
+
 palheta <- MetBrewer::met.brewer("Peru1", n=100, type = "continuous")
 
-contratos_plug <- read_rds("data/mulungu/contratos_plug.rds")
-financeiro_plug <- read_rds("data/mulungu/financeiro_plug.rds")
-dicionario_sre <- read_rds("data/mulungu/dicionario_sre.rds") 
-obras_notion <- read_rds("data/mulungu/obras_notion.rds")
+contratos_plug <- read_rds(file.path(DIR_RAW_MULUNGU, "contratos_plug.rds"))
+financeiro_plug <- read_rds(file.path(DIR_RAW_MULUNGU, "financeiro_plug.rds"))
+dicionario_sre <- read_rds(file.path(DIR_RAW_MULUNGU, "dicionario_sre.rds")) 
+obras_notion <- read_rds(file.path(DIR_RAW_MULUNGU, "obras_notion.rds"))
 
 contratos_plug_enriquecidos <- contratos_plug %>% 
   left_join(
@@ -31,7 +34,7 @@ pool <- pool::dbPool(
   idleTimeout = 60 * 60
 )
 
-pernambuco_rodovias_sre_2025 <- read_rds("data/mulungu/rodovias.rds")
+pernambuco_rodovias_sre_2025 <- read_rds(file.path(DIR_RAW_MULUNGU, "rodovias.rds"))
 
 pernambuco_regioes_administrativas <- tbl(pool, "pernambuco_regioes_administrativas") %>%
   collect() %>%
@@ -859,7 +862,14 @@ fracoes_obras_municipio_resumo <-  full_join(
 
 ################### BASE AURORA ##################
 
-pe_sf <- read_rds("../auroraprime/data/pernambuco_sf.rds")
+caminho_pe_sf <- if (file.exists(file.path(DIR_OUT_AURORA, "pernambuco_sf.rds"))) {
+  file.path(DIR_OUT_AURORA, "pernambuco_sf.rds")
+} else if (file.exists(file.path(DIR_MULUNGU, "pernambuco_sf.rds"))) {
+  file.path(DIR_MULUNGU, "pernambuco_sf.rds")
+} else {
+  "../auroraprime/data/pernambuco_sf.rds"
+}
+pe_sf <- read_rds(caminho_pe_sf)
 
 base_mulungu_aurora <- fracoes_obras_municipio %>%
   left_join(
@@ -909,7 +919,7 @@ base_mulungu_aurora <- fracoes_obras_municipio %>%
   ))
 
 #### Rodovias
-rodovias <- read_rds("data/mulungu/rodovias.rds")
+rodovias <- read_rds(file.path(DIR_RAW_MULUNGU, "rodovias.rds"))
 
 rodovias_mulungu <- rodovias %>% left_join(
   obras_notion_enriquecido %>% select(ordem, codigos_sre) %>% 
@@ -938,9 +948,9 @@ rodovias_mulungu <- rodovias %>% left_join(
   select(nome, denom, sre, inicio, fim, ext, rev, sit, obra, pci, pci_cls, mun, rd, dro, geometry) 
   
 ##### Projetos Plug
-write_rds(obras_notion_enriquecido, "data/mulungu/obras_notion_enriquecido.rds") # ok
+write_rds(obras_notion_enriquecido, file.path(DIR_RAW_MULUNGU, "obras_notion_enriquecido.rds")) # ok
 
-obras_notion_enriquecido <- read_rds("data/mulungu/obras_notion_enriquecido.rds")
+obras_notion_enriquecido <- read_rds(file.path(DIR_RAW_MULUNGU, "obras_notion_enriquecido.rds"))
 
 projetos_obras_lista <- obras_notion_enriquecido %>% pull(contrato_projeto_plug) %>% na.omit()
 
@@ -954,7 +964,7 @@ tabela_ordem_plug <- obras_notion_enriquecido  %>%
   filter(!is.na(contrato_plug))
 
 tabela_ordem_plug %>% saveRDS(
-  'app_mulungu/data/tabela_ordem_plug.rds'
+  file.path(DIR_MULUNGU, 'tabela_ordem_plug.rds')
 )
 
 sre_obras_lista <- obras_notion_enriquecido %>% 
@@ -965,7 +975,7 @@ sre_obras_lista <- obras_notion_enriquecido %>%
   mutate(codigos_sre = str_trim(codigos_sre)) %>% 
   pull(codigos_sre)
 
-contratos_plug_projetos <- read_rds("data/mulungu/contratos_plug.rds") %>% 
+contratos_plug_projetos <- read_rds(file.path(DIR_RAW_MULUNGU, "contratos_plug.rds")) %>% 
   filter(
     str_detect(contrato_tipo_plug, "Projeto"), 
     !is.na(codigos_sre), 
@@ -1116,37 +1126,39 @@ projetos_geometrias <- projetos_sf %>%
 
 # salvar ----
 
-write_rds(base_mulungu_aurora, "data/mulungu/base_mulungu_aurora.rds")
+write_rds(base_mulungu_aurora, file.path(DIR_RAW_MULUNGU, "base_mulungu_aurora.rds"))
 
-write_rds(contratos_plug_enriquecidos, "data/mulungu/contratos_plug_enriquecidos.rds") # ok
+write_rds(contratos_plug_enriquecidos, file.path(DIR_RAW_MULUNGU, "contratos_plug_enriquecidos.rds")) # ok
 
-write_rds(contratos_plug_enriquecidos, "app_mulungu/data/contratos_plug_enriquecidos.rds") # ok
+write_rds(contratos_plug_enriquecidos, file.path(DIR_MULUNGU, "contratos_plug_enriquecidos.rds")) # ok
 
-write_rds(fracoes_obras_rd, "data/mulungu/fracoes_obras_rd.rds") # ok
+write_rds(fracoes_obras_rd, file.path(DIR_RAW_MULUNGU, "fracoes_obras_rd.rds")) # ok
 
-write_rds(fracoes_obras_municipio_resumo, "data/mulungu/fracoes_obras_municipio_resumo.rds") # ok
+write_rds(fracoes_obras_municipio_resumo, file.path(DIR_RAW_MULUNGU, "fracoes_obras_municipio_resumo.rds")) # ok
 
-write_rds(fracoes_obras_municipio, "data/mulungu/fracoes_obras_municipio.rds") # ok
+write_rds(fracoes_obras_municipio, file.path(DIR_RAW_MULUNGU, "fracoes_obras_municipio.rds")) # ok
 
-write_rds(obras_notion_enriquecido, "app_mulungu/data/obras_notion_enriquecido.rds") # ok
+write_rds(obras_notion_enriquecido, file.path(DIR_MULUNGU, "obras_notion_enriquecido.rds")) # ok
 
-write_rds(obras_notion_geometrias, "app_mulungu/data/obras_notion_geometrias.rds") # ok
+write_rds(obras_notion_geometrias, file.path(DIR_MULUNGU, "obras_notion_geometrias.rds")) # ok
 
-write_rds(obras_notion_geometrias2, "app_mulungu/data/obras_notion_geometrias2.rds") # ok
+write_rds(obras_notion_geometrias2, file.path(DIR_MULUNGU, "obras_notion_geometrias2.rds")) # ok
 
-write_rds(projetos_geometrias, "app_mulungu/data/projetos_geometrias.rds") # ok
+write_rds(projetos_geometrias, file.path(DIR_MULUNGU, "projetos_geometrias.rds")) # ok
 
-write_rds(rodovias_mulungu, "app_mulungu/data/rodovias_mulungu.rds")
+write_rds(rodovias_mulungu, file.path(DIR_MULUNGU, "rodovias_mulungu.rds"))
 
-write_rds(tabela_pe_na_estrada, "app_mulungu/data/tabela_pe_na_estrada.rds")
+write_rds(tabela_pe_na_estrada, file.path(DIR_MULUNGU, "tabela_pe_na_estrada.rds"))
 
-write_rds(tabela_timeline, "app_mulungu/data/tabela_timeline.rds")
+write_rds(tabela_timeline, file.path(DIR_MULUNGU, "tabela_timeline.rds"))
 
-write_rds(tabela_cards, "app_mulungu/data/tabela_cards.rds")
+write_rds(tabela_cards, file.path(DIR_MULUNGU, "tabela_cards.rds"))
 
-write_rds(tabela_cards2, "app_mulungu/data/tabela_cards2.rds")
+write_rds(tabela_cards2, file.path(DIR_MULUNGU, "tabela_cards2.rds"))
 
-config_file <- read_lines("app_mulungu/data/config.yml")
-config_file[4] <- glue::glue("  update: \"{ format(Sys.Date(), '%Y/%m/%d') }\"")
-
-write_lines(x = config_file, "app_mulungu/data/config.yml", append = FALSE)
+caminho_config <- file.path(DIR_MULUNGU, "config.yml")
+if (file.exists(caminho_config)) {
+  config_file <- read_lines(caminho_config)
+  config_file[4] <- glue::glue("  update: \"{ format(Sys.Date(), '%Y/%m/%d') }\"")
+  write_lines(x = config_file, caminho_config, append = FALSE)
+}

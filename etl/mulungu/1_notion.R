@@ -1,4 +1,4 @@
-﻿#notion_key <- "secret_bkUAXm9I0u3xeY1hjckKbi5CzAig54XiTBQYRAD8pUm"
+#notion_key <- "secret_bkUAXm9I0u3xeY1hjckKbi5CzAig54XiTBQYRAD8pUm"
 #notion_iniciativas <- "a19ce1ff6027441e957531e2d91fc489"
 #notion_licitacoes <- "a02d8d05a87d484584afc1afd24327ea"
 #notion_obras <- "eed382976b5b49a4bb18cf27c9509a0b"
@@ -28,6 +28,9 @@ library(tidyverse)
 library(httr2)
 library(furrr)
 library(plug)
+
+# Carregamento centralizado de caminhos
+if (file.exists("R/paths.R")) source("R/paths.R") else if (file.exists("paths.R")) source("paths.R") else if (file.exists("../../R/paths.R")) source("../../R/paths.R") else if (file.exists("etl/paths.R")) source("etl/paths.R")
 library(scales)
 library(glue)
 library(htmltools)
@@ -227,7 +230,7 @@ obras_notion <- get_id_data(notion_obras, notion_key) %>%
 
 #obras_notion %>% count(inauguracao)
 
-write_rds(obras_notion, "data/mulungu/obras_notion.rds")
+write_rds(obras_notion, file.path(DIR_RAW_MULUNGU, "obras_notion.rds"))
 
 
 licitacoes_notion <- get_id_data(notion_licitacoes, notion_key)
@@ -331,7 +334,7 @@ licitacoes_notion_clean <- licitacoes_notion %>%
   mutate(valor_licitacao = as.numeric(str_replace(valor_licitacao, ",", "."))) %>% 
   mutate(extensao = as.numeric(extensao))
 
-write_rds(licitacoes_notion_clean, "app_mulungu/data/licitacoes_notion.rds")
+write_rds(licitacoes_notion_clean, file.path(DIR_MULUNGU, "licitacoes_notion.rds"))
 
 projetos_notion <- get_id_data(notion_projetos, notion_key)
 
@@ -420,4 +423,4 @@ projetos_notion_clean <- projetos_notion %>%
     ) %>% 
   ungroup()
 
-write_rds(projetos_notion_clean, "app_mulungu/data/projetos_notion.rds")
+write_rds(projetos_notion_clean, file.path(DIR_MULUNGU, "projetos_notion.rds"))

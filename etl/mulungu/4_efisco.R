@@ -1,9 +1,18 @@
-﻿library(tidyverse)
+library(tidyverse)
 library(arrow)
 library(furrr)
 library(pool)
 
-contratos_plug <- read_rds("data/constratos_plug.rds")
+# Carregamento centralizado de caminhos
+if (file.exists("R/paths.R")) source("R/paths.R") else if (file.exists("paths.R")) source("paths.R") else if (file.exists("../../R/paths.R")) source("../../R/paths.R") else if (file.exists("etl/paths.R")) source("etl/paths.R")
+
+contratos_plug <- if (file.exists(file.path(DIR_RAW_MULUNGU, "contratos_plug.rds"))) {
+  read_rds(file.path(DIR_RAW_MULUNGU, "contratos_plug.rds"))
+} else if (file.exists(file.path(DIR_RAW_MULUNGU, "constratos_plug.rds"))) {
+  read_rds(file.path(DIR_RAW_MULUNGU, "constratos_plug.rds"))
+} else {
+  read_rds("data/constratos_plug.rds")
+}
 
 contratos_efisco_plug <- contratos_plug %>% 
   select(contrato_plug, contratos_efisco) %>% 
@@ -15,7 +24,7 @@ contratos_efisco_plug <- contratos_plug %>%
   select(-contratos_efisco, contrato_plug, contrato_efisco = contratos) %>% 
   distinct()
 
-write_rds(contratos_efisco_plug, "data/contratos_efisco_plug.rds")
+write_rds(contratos_efisco_plug, file.path(DIR_RAW_MULUNGU, "contratos_efisco_plug.rds"))
 
 empenhos_efisco <- read_parquet("../contratos/data/ETL/efisco_empenhos.pqt") %>%
   filter(
@@ -47,7 +56,7 @@ poolClose(pool)
 empenhos_efisco %>% 
   select(acao_codigo, acao_nome, subacao_codigo, subacao_nome) %>% 
   distinct() %>% 
-  write_rds("app/data/base_acoes_subacoes_der.rds")
+  write_rds(file.path(DIR_MULUNGU, "base_acoes_subacoes_der.rds"))
 
 empenhos_plug <- empenhos_efisco %>% filter(contrato_codigo %in% unique(contratos_efisco_plug$contrato_efisco))
 
@@ -68,7 +77,7 @@ contratos_acoes_fontes_efisco <- empenhos_plug %>%
 #select(subacao_nome) %>% 
 #mutate(rodovia_subacao = str_to_upper(str_extract(str_to_lower(subacao_nome), "(([v,a]*pe|br)-\\d{3})|(\\d. dod)"))) %>% 
 
-write_rds(contratos_acoes_fontes_efisco, "data/contratos_acoes_fontes_efisco.rds")
+write_rds(contratos_acoes_fontes_efisco, file.path(DIR_RAW_MULUNGU, "contratos_acoes_fontes_efisco.rds"))
   
 financeiro_plug <- contratos_efisco_plug %>% 
   left_join(
@@ -90,5 +99,5 @@ financeiro_plug <- contratos_efisco_plug %>%
     .groups = "drop"
   )
 
-write_rds(financeiro_plug, "data/financeiro_plug.rds")
+write_rds(financeiro_plug, file.path(DIR_RAW_MULUNGU, "financeiro_plug.rds"))
 

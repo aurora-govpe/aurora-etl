@@ -36,12 +36,13 @@ DIR_OUT_ARGOS <- Sys.getenv(
 )
 
 # ------------------------------------------------------------------------------
-# 3. ALIASES PARA COMPATIBILIDADE RETROATIVA
+# 3. ALIASES PARA COMPATIBILIDADE RETROATIVA E OUTRAS PLATAFORMAS
 # ------------------------------------------------------------------------------
 # Scripts que antes gravavam em pastas internas dos apps agora apontam para o diretório central
 DIR_DADOS             <- DIR_OUT_AURORA
 DIR_DADOS_AURORA_MUNI <- DIR_OUT_AURORA
 DIR_MULUNGU           <- Sys.getenv("MULUNGU_DATA_DIR", if (is_linux) "/srv/dados/mulungu" else "C:/dados/mulungu")
+DIR_RAW_MULUNGU       <- Sys.getenv("MULUNGU_RAW_DIR", if (is_linux) "/srv/dados_brutos/aurora/mulungu" else "C:/dados/dados brutos/aurora/mulungu")
 
 # ------------------------------------------------------------------------------
 # 4. FUNÇÕES UTILITÁRIAS DE ACESSO A ARQUIVOS
@@ -50,8 +51,9 @@ DIR_MULUNGU           <- Sys.getenv("MULUNGU_DATA_DIR", if (is_linux) "/srv/dado
 raw_path <- function(..., plataforma = "aurora") {
   base <- switch(
     tolower(plataforma),
-    "aurora" = DIR_RAW_AURORA,
-    "argos"  = DIR_RAW_ARGOS,
+    "aurora"  = DIR_RAW_AURORA,
+    "argos"   = DIR_RAW_ARGOS,
+    "mulungu" = DIR_RAW_MULUNGU,
     stop("Plataforma desconhecida: ", plataforma)
   )
   file.path(base, ...)
@@ -61,8 +63,9 @@ raw_path <- function(..., plataforma = "aurora") {
 out_path <- function(..., plataforma = "aurora") {
   base <- switch(
     tolower(plataforma),
-    "aurora" = DIR_OUT_AURORA,
-    "argos"  = DIR_OUT_ARGOS,
+    "aurora"  = DIR_OUT_AURORA,
+    "argos"   = DIR_OUT_ARGOS,
+    "mulungu" = DIR_MULUNGU,
     stop("Plataforma desconhecida: ", plataforma)
   )
   file.path(base, ...)
@@ -70,3 +73,5 @@ out_path <- function(..., plataforma = "aurora") {
 
 # Garante que os diretórios essenciais existam
 if (!dir.exists(DIR_OUT_AURORA)) dir.create(DIR_OUT_AURORA, recursive = TRUE, showWarnings = FALSE)
+if (!dir.exists(DIR_MULUNGU)) dir.create(DIR_MULUNGU, recursive = TRUE, showWarnings = FALSE)
+if (!dir.exists(DIR_RAW_MULUNGU)) dir.create(DIR_RAW_MULUNGU, recursive = TRUE, showWarnings = FALSE)

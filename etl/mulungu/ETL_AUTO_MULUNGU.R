@@ -1,4 +1,7 @@
-﻿
+
+# Carregamento centralizado de caminhos
+if (file.exists("R/paths.R")) source("R/paths.R") else if (file.exists("paths.R")) source("paths.R") else if (file.exists("../../R/paths.R")) source("../../R/paths.R") else if (file.exists("etl/paths.R")) source("etl/paths.R")
+
 cat("🚀 Iniciando execução dos scripts...\n")
 
 tictoc::tic('Tempo ETL')
@@ -48,10 +51,10 @@ library(ssh)
 ## setup ----
 
 # Caminho Local (onde estão os arquivos no seu PC)
-dir_local <- "app_mulungu/data"
+dir_local <- DIR_MULUNGU
 
 # Caminho Remoto (onde eles vão ser salvos)
-dir_remoto <- "/srv/dados/mulungu"
+dir_remoto <- if (exists("DIR_MULUNGU_REMOTO")) DIR_MULUNGU_REMOTO else "/srv/dados/mulungu"
 
 # Lista de arquivos
 arquivos <- c(
