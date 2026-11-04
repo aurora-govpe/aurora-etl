@@ -28,6 +28,7 @@ library(tidyverse)
 library(httr2)
 library(furrr)
 library(plug)
+library(arrow)
 
 # Carregamento centralizado de caminhos
 if (file.exists("R/paths.R")) source("R/paths.R") else if (file.exists("paths.R")) source("paths.R") else if (file.exists("../../R/paths.R")) source("../../R/paths.R") else if (file.exists("etl/paths.R")) source("etl/paths.R")
@@ -335,6 +336,10 @@ licitacoes_notion_clean <- licitacoes_notion %>%
   mutate(extensao = as.numeric(extensao))
 
 write_rds(licitacoes_notion_clean, file.path(DIR_MULUNGU, "licitacoes_notion.rds"))
+arrow::write_parquet(as.data.frame(licitacoes_notion_clean), file.path(DIR_MULUNGU, "licitacoes_notion.parquet"))
+if (dir.exists(file.path(DIR_MULUNGU, "parquet"))) {
+  arrow::write_parquet(as.data.frame(licitacoes_notion_clean), file.path(DIR_MULUNGU, "parquet/licitacoes_notion.parquet"))
+}
 
 projetos_notion <- get_id_data(notion_projetos, notion_key)
 
@@ -424,3 +429,7 @@ projetos_notion_clean <- projetos_notion %>%
   ungroup()
 
 write_rds(projetos_notion_clean, file.path(DIR_MULUNGU, "projetos_notion.rds"))
+arrow::write_parquet(as.data.frame(projetos_notion_clean), file.path(DIR_MULUNGU, "projetos_notion.parquet"))
+if (dir.exists(file.path(DIR_MULUNGU, "parquet"))) {
+  arrow::write_parquet(as.data.frame(projetos_notion_clean), file.path(DIR_MULUNGU, "parquet/projetos_notion.parquet"))
+}

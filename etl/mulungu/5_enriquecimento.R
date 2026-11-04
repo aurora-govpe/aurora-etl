@@ -6,6 +6,8 @@ library(DBI)
 library(vialactea)
 library(RPostgres)
 library(bslib)
+library(arrow)
+library(geojsonsf)
 
 # Carregamento centralizado de caminhos
 if (file.exists("R/paths.R")) source("R/paths.R") else if (file.exists("paths.R")) source("paths.R") else if (file.exists("../../R/paths.R")) source("../../R/paths.R") else if (file.exists("etl/paths.R")) source("etl/paths.R")
@@ -1126,39 +1128,74 @@ projetos_geometrias <- projetos_sf %>%
 
 # salvar ----
 
-# Base DER/Mulungu consumida pelo Aurora (etl_05_iniciativas_join.R)
+# Diretórios para parquet e geojson
+dir.create(file.path(DIR_OUT_AURORA, "parquet"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(DIR_OUT_AURORA, "geojson"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(DIR_MULUNGU, "parquet"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(DIR_MULUNGU, "geojson"), recursive = TRUE, showWarnings = FALSE)
+
+# 1. Base DER/Mulungu consumida pelo Aurora (etl_05_iniciativas_join.R)
 write_rds(base_mulungu_aurora, file.path(DIR_OUT_AURORA, "base_mulungu_aurora.rds"))
 write_rds(base_mulungu_aurora, file.path(DIR_RAW_AURORA, "base_mulungu_aurora.rds"))
+arrow::write_parquet(as.data.frame(base_mulungu_aurora), file.path(DIR_OUT_AURORA, "parquet/base_mulungu_aurora.parquet"))
+arrow::write_parquet(as.data.frame(base_mulungu_aurora), file.path(DIR_OUT_AURORA, "base_mulungu_aurora.parquet"))
 
-write_rds(contratos_plug_enriquecidos, file.path(DIR_RAW_MULUNGU, "contratos_plug_enriquecidos.rds")) # ok
+# Geometrias DER/Mulungu consumidas pelo Aurora
+write_rds(obras_notion_geometrias2, file.path(DIR_OUT_AURORA, "obras_notion_geometrias2.rds"))
+geojsonsf::sf_geojson(obras_notion_geometrias2) %>% write_lines(file.path(DIR_OUT_AURORA, "geojson/obras_notion_geometrias2.geojson"))
 
-write_rds(contratos_plug_enriquecidos, file.path(DIR_MULUNGU, "contratos_plug_enriquecidos.rds")) # ok
+write_rds(projetos_geometrias, file.path(DIR_OUT_AURORA, "projetos_geometrias.rds"))
+geojsonsf::sf_geojson(projetos_geometrias) %>% write_lines(file.path(DIR_OUT_AURORA, "geojson/projetos_geometrias.geojson"))
 
-write_rds(fracoes_obras_rd, file.path(DIR_RAW_MULUNGU, "fracoes_obras_rd.rds")) # ok
+# 2. Dados Tabulares do Mulungu (Parquet e RDS)
+write_rds(contratos_plug_enriquecidos, file.path(DIR_MULUNGU, "contratos_plug_enriquecidos.rds"))
+arrow::write_parquet(as.data.frame(contratos_plug_enriquecidos), file.path(DIR_MULUNGU, "contratos_plug_enriquecidos.parquet"))
+arrow::write_parquet(as.data.frame(contratos_plug_enriquecidos), file.path(DIR_MULUNGU, "parquet/contratos_plug_enriquecidos.parquet"))
 
-write_rds(fracoes_obras_municipio_resumo, file.path(DIR_RAW_MULUNGU, "fracoes_obras_municipio_resumo.rds")) # ok
-
-write_rds(fracoes_obras_municipio, file.path(DIR_RAW_MULUNGU, "fracoes_obras_municipio.rds")) # ok
-
-write_rds(obras_notion_enriquecido, file.path(DIR_MULUNGU, "obras_notion_enriquecido.rds")) # ok
-
-write_rds(obras_notion_geometrias, file.path(DIR_MULUNGU, "obras_notion_geometrias.rds")) # ok
-
-write_rds(obras_notion_geometrias2, file.path(DIR_MULUNGU, "obras_notion_geometrias2.rds")) # ok
-write_rds(obras_notion_geometrias2, file.path(DIR_OUT_AURORA, "obras_notion_geometrias2.rds")) # Aurora ETL
-
-write_rds(projetos_geometrias, file.path(DIR_MULUNGU, "projetos_geometrias.rds")) # ok
-write_rds(projetos_geometrias, file.path(DIR_OUT_AURORA, "projetos_geometrias.rds")) # Aurora ETL
-
-write_rds(rodovias_mulungu, file.path(DIR_MULUNGU, "rodovias_mulungu.rds"))
+write_rds(obras_notion_enriquecido, file.path(DIR_MULUNGU, "obras_notion_enriquecido.rds"))
+arrow::write_parquet(as.data.frame(obras_notion_enriquecido), file.path(DIR_MULUNGU, "obras_notion_enriquecido.parquet"))
+arrow::write_parquet(as.data.frame(obras_notion_enriquecido), file.path(DIR_MULUNGU, "parquet/obras_notion_enriquecido.parquet"))
 
 write_rds(tabela_pe_na_estrada, file.path(DIR_MULUNGU, "tabela_pe_na_estrada.rds"))
+arrow::write_parquet(as.data.frame(tabela_pe_na_estrada), file.path(DIR_MULUNGU, "tabela_pe_na_estrada.parquet"))
+arrow::write_parquet(as.data.frame(tabela_pe_na_estrada), file.path(DIR_MULUNGU, "parquet/tabela_pe_na_estrada.parquet"))
 
 write_rds(tabela_timeline, file.path(DIR_MULUNGU, "tabela_timeline.rds"))
+arrow::write_parquet(as.data.frame(tabela_timeline), file.path(DIR_MULUNGU, "tabela_timeline.parquet"))
+arrow::write_parquet(as.data.frame(tabela_timeline), file.path(DIR_MULUNGU, "parquet/tabela_timeline.parquet"))
 
+if (exists("tabela_ordem_plug")) {
+  write_rds(tabela_ordem_plug, file.path(DIR_MULUNGU, "tabela_ordem_plug.rds"))
+  arrow::write_parquet(as.data.frame(tabela_ordem_plug), file.path(DIR_MULUNGU, "tabela_ordem_plug.parquet"))
+  arrow::write_parquet(as.data.frame(tabela_ordem_plug), file.path(DIR_MULUNGU, "parquet/tabela_ordem_plug.parquet"))
+}
+
+# 3. Geometrias do Mulungu (GeoJSON e RDS)
+write_rds(obras_notion_geometrias, file.path(DIR_MULUNGU, "obras_notion_geometrias.rds"))
+geojsonsf::sf_geojson(obras_notion_geometrias) %>% write_lines(file.path(DIR_MULUNGU, "obras_notion_geometrias.geojson"))
+geojsonsf::sf_geojson(obras_notion_geometrias) %>% write_lines(file.path(DIR_MULUNGU, "geojson/obras_notion_geometrias.geojson"))
+
+write_rds(obras_notion_geometrias2, file.path(DIR_MULUNGU, "obras_notion_geometrias2.rds"))
+geojsonsf::sf_geojson(obras_notion_geometrias2) %>% write_lines(file.path(DIR_MULUNGU, "obras_notion_geometrias2.geojson"))
+geojsonsf::sf_geojson(obras_notion_geometrias2) %>% write_lines(file.path(DIR_MULUNGU, "geojson/obras_notion_geometrias2.geojson"))
+
+write_rds(projetos_geometrias, file.path(DIR_MULUNGU, "projetos_geometrias.rds"))
+geojsonsf::sf_geojson(projetos_geometrias) %>% write_lines(file.path(DIR_MULUNGU, "projetos_geometrias.geojson"))
+geojsonsf::sf_geojson(projetos_geometrias) %>% write_lines(file.path(DIR_MULUNGU, "geojson/projetos_geometrias.geojson"))
+
+write_rds(rodovias_mulungu, file.path(DIR_MULUNGU, "rodovias_mulungu.rds"))
+geojsonsf::sf_geojson(rodovias_mulungu) %>% write_lines(file.path(DIR_MULUNGU, "rodovias_mulungu.geojson"))
+geojsonsf::sf_geojson(rodovias_mulungu) %>% write_lines(file.path(DIR_MULUNGU, "geojson/rodovias_mulungu.geojson"))
+
+# 4. Objetos UI/Cards (listas Shiny mantidas em RDS)
 write_rds(tabela_cards, file.path(DIR_MULUNGU, "tabela_cards.rds"))
-
 write_rds(tabela_cards2, file.path(DIR_MULUNGU, "tabela_cards2.rds"))
+
+# 5. Bases Raw/Intermediárias
+write_rds(contratos_plug_enriquecidos, file.path(DIR_RAW_MULUNGU, "contratos_plug_enriquecidos.rds"))
+write_rds(fracoes_obras_rd, file.path(DIR_RAW_MULUNGU, "fracoes_obras_rd.rds"))
+write_rds(fracoes_obras_municipio_resumo, file.path(DIR_RAW_MULUNGU, "fracoes_obras_municipio_resumo.rds"))
+write_rds(fracoes_obras_municipio, file.path(DIR_RAW_MULUNGU, "fracoes_obras_municipio.rds"))
 
 caminho_config <- file.path(DIR_MULUNGU, "config.yml")
 if (file.exists(caminho_config)) {

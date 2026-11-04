@@ -56,28 +56,41 @@ dir_local <- DIR_MULUNGU
 # Caminho Remoto (onde eles vão ser salvos)
 dir_remoto <- if (exists("DIR_MULUNGU_REMOTO")) DIR_MULUNGU_REMOTO else "/srv/dados/mulungu"
 
-# Lista de arquivos
+# Lista de arquivos (RDS, QS, Parquet e GeoJSON)
 arquivos <- c(
   "tabela_timeline.rds",
+  "tabela_timeline.parquet",
   "tabela_pe_na_estrada.rds",
+  "tabela_pe_na_estrada.parquet",
   "tabela_cards.rds",
   "projetos_notion.rds",
+  "projetos_notion.parquet",
   "obras_notion_enriquecido.rds",
+  "obras_notion_enriquecido.parquet",
   "licitacoes_notion.rds",
+  "licitacoes_notion.parquet",
   "df_relatorios_diario.qs",
   "df_medicoes_plug.qs",
   "df_contratos_plug.qs",
   "contratos_plug_enriquecidos.rds",
+  "contratos_plug_enriquecidos.parquet",
   "tabela_cards2.rds",
+  "tabela_ordem_plug.rds",
+  "tabela_ordem_plug.parquet",
   "rodovias_mulungu.rds",
+  "rodovias_mulungu.geojson",
   "obras_notion_geometrias2.rds",
+  "obras_notion_geometrias2.geojson",
   "obras_notion_geometrias.rds",
+  "obras_notion_geometrias.geojson",
   "projetos_geometrias.rds",
+  "projetos_geometrias.geojson",
   "config.yml"
 )
 
-# Prepara os caminhos completos locais
+# Prepara os caminhos completos locais (filtrando os que realmente existem)
 arquivos_completos <- file.path(dir_local, arquivos)
+arquivos_completos <- arquivos_completos[file.exists(arquivos_completos)]
 
 # --- 2. Conexão ---
 

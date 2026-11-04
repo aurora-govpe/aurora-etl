@@ -80,12 +80,17 @@ locais_iniciativas %>%
 # ------------------------------------------------------------------------------
 
 # 2.1 DER / Mulungu e Geometrias de Obras/Projetos
-mulungu_path <- if (file.exists(file.path(DIR_OUT_AURORA, "base_mulungu_aurora.rds"))) {
+mulungu_path_parquet <- file.path(DIR_OUT_AURORA, "parquet/base_mulungu_aurora.parquet")
+mulungu_path_rds <- if (file.exists(file.path(DIR_OUT_AURORA, "base_mulungu_aurora.rds"))) {
   file.path(DIR_OUT_AURORA, "base_mulungu_aurora.rds")
 } else {
   file.path(DIR_RAW_AURORA, "base_mulungu_aurora.rds")
 }
-base_mulungu_aurora <- if (file.exists(mulungu_path)) read_rds(mulungu_path) %>% mutate(fonte = "DER") else NULL
+base_mulungu_aurora <- if (file.exists(mulungu_path_parquet)) {
+  arrow::read_parquet(mulungu_path_parquet) %>% mutate(fonte = "DER")
+} else if (file.exists(mulungu_path_rds)) {
+  read_rds(mulungu_path_rds) %>% mutate(fonte = "DER")
+} else NULL
 
 geom_obras_path     <- if (file.exists(file.path(DIR_OUT_AURORA, "obras_notion_geometrias2.rds"))) file.path(DIR_OUT_AURORA, "obras_notion_geometrias2.rds") else file.path(DIR_RAW_AURORA, "obras_notion_geometrias2.rds")
 geometrias_obras    <- if (file.exists(geom_obras_path)) read_rds(geom_obras_path) else NULL
