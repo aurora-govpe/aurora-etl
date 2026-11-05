@@ -1,4 +1,4 @@
-﻿# ==============================================================================
+# ==============================================================================
 # SCRIPT 01: TRATAMENTO E PROCESSAMENTO DE DADOS - COMPESA
 # Objetivo: Leitura do plano de investimentos da COMPESA, mapeamento/rateio de
 #           valores por municípios, padronização de campos e status.
@@ -7,7 +7,7 @@
 # ------------------------------------------------------------------------------
 # 1. LEITURA DOS DADOS BRUTOS DA COMPESA E TABELA DE TRADUÇÃO
 # ------------------------------------------------------------------------------
-# Leitura do plano de investimentos mais recente da COMPESA
+# Leitura do plano de investimentos mais recente da COMPESA via DIR_RAW_AURORA
 compesa_file_path <- file.path(DIR_RAW_AURORA, "compesa/Plano de Investimentos - 29jul26 SAESPRI.xlsx")
 
 if (!file.exists(compesa_file_path)) {
@@ -70,7 +70,7 @@ dados_compesa_processed <- dados_compesa_raw %>%
   
   # --- Passo B: Parsing de Datas Flexível ---
   mutate(
-    data_de_inicio_parsed  = parse_date_time(data_de_inicio, orders = c("ymd", "dmy", "YmdHMS", "dmY")),
+    data_de_inicio_parsed   = parse_date_time(data_de_inicio, orders = c("ymd", "dmy", "YmdHMS", "dmY")),
     termino_previsto_parsed = parse_date_time(termino_previsto, orders = c("ymd", "dmy", "YmdHMS", "dmY"))
   ) %>%
   

@@ -1,4 +1,4 @@
-﻿# ==============================================================================
+# ==============================================================================
 # SCRIPT 02: TRATAMENTO E PROCESSAMENTO DE CONVÊNIOS - SECULT E SEE
 # Objetivo: Importação e padronização dos dados de convênios das secretarias
 #           de Cultura (SECULT) e Educação (SEE) provenientes de Excel e Google Sheets.
@@ -7,20 +7,19 @@
 # ------------------------------------------------------------------------------
 # 1. SECULT (SECRETARIA DE CULTURA)
 # ------------------------------------------------------------------------------
-# secult_file_path <- file.path(DIR_ETL, "data/secult/convênios_municípios_secult.xlsx")
+# secult_file_path <- file.path(DIR_RAW_AURORA, "secult/convênios_municípios_secult.xlsx")
 # 
 # if (!file.exists(secult_file_path)) {
 #   cli_abort("Arquivo de convênios da SECULT não encontrado: {.path {secult_file_path}}")
 # }
 
-
 url_dados_secult <- "https://docs.google.com/spreadsheets/d/17eD-4yesZGL6Kcy9eOWjQTMgnh_ywkHQD99tW_xqEFQ/edit?gid=1221686350#gid=1221686350"
 
-# 2.2 Importação da Planilha Google Sheets
+# 1.1 Importação da Planilha Google Sheets
 df_secult_raw <- read_sheet(
   ss    = url_dados_secult,
   sheet = "CONVÊNIOS - 2026", 
-  skip = 2
+  skip  = 2
 ) %>%
   clean_names()
 
@@ -39,18 +38,16 @@ dados_convenios_secult <- df_secult_raw %>%
     iniciativa_estrategica = "CONVÊNIOS COM MUNICÍPIOS",
     secretaria             = "SECULT",
     secretaria_unidade     = "SECULT",
-    objeto                = objeto_4,
-    produto = objeto,
-    no_contrato = no_do_instrumento_1,
+    objeto                 = objeto_4,
+    produto                = objeto,
+    no_contrato            = no_do_instrumento_1,
+    
     # Valores e Execução
-    # valor_total            = as.character(valor_govpe),
-    # valor_pago             = as.character(valor_pago),
-    # percent_execucao       = as.character(percent_execucao_fisica),
-    valor_total            = valor_repassado_secult_5,
-    valor_pago             = valor_repassado_secult_5,
-    percent_execucao       = valor_total/valor_pago,
-    valor_total            = as.character(valor_total),
-    valor_pago             = as.character(valor_pago),
+    valor_total          = valor_repassado_secult_5,
+    valor_pago           = valor_repassado_secult_5,
+    percent_execucao     = valor_total / valor_pago,
+    valor_total          = as.character(valor_total),
+    valor_pago           = as.character(valor_pago),
     valor_total_convenio = valor_global_7,
     
     # Datas (Garante parsing correto para formato DD/MM/YYYY)
@@ -70,15 +67,15 @@ dados_convenios_secult <- df_secult_raw %>%
     ),
     
     # Atributos Complementares
-    latitude               = NA_character_,
-    longitude              = NA_character_,
-    local                  = NA_character_,
-    observacoes            = NA_character_,
-    endereco_target        = NA_character_,
-    fonte                  = "SECULT", 
-    subacao = subacao_cod, 
-    acao = NA_character_  
-    ) %>%
+    latitude        = NA_character_,
+    longitude       = NA_character_,
+    local           = NA_character_,
+    observacoes     = NA_character_,
+    endereco_target = NA_character_,
+    fonte           = "SECULT", 
+    subacao         = subacao_cod, 
+    acao            = NA_character_  
+  ) %>%
   mutate(
     status = case_when(
       Sys.Date() < data_de_inicio ~ "Em Execução",
@@ -97,7 +94,7 @@ glimpse(dados_convenios_secult)
 # 2. SEE (SECRETARIA DE EDUCAÇÃO)
 # ------------------------------------------------------------------------------
 
-# 2.1 Autenticação Google Sheets
+# 2.1 Autenticação Google Sheets via DIR_RAW_AURORA
 googlesheets_token_path <- file.path(DIR_RAW_AURORA, "r-sheets-hugo-0788cc358cb5.json")
 
 if (file.exists(googlesheets_token_path)) {
@@ -186,16 +183,16 @@ dados_convenios_educacao <- dados_convenios_educacao_raw %>%
     valor_pago             = as.character(valor_pago_num),
     
     # Colunas Nulas Padrão
-    latitude               = NA_character_,
-    longitude              = NA_character_,
-    local                  = NA_character_,
-    observacoes            = NA_character_,
-    endereco_target        = NA_character_,
-    indicador              = NA_character_,
-    indicador_nome         = NA_character_,
-    indicador_secundario   = NA_character_,
-    executor               = NA_character_,
-    fonte                  = "SEE"
+    latitude             = NA_character_,
+    longitude            = NA_character_,
+    local                = NA_character_,
+    observacoes          = NA_character_,
+    endereco_target      = NA_character_,
+    indicador            = NA_character_,
+    indicador_nome       = NA_character_,
+    indicador_secundario = NA_character_,
+    executor             = NA_character_,
+    fonte                = "SEE"
   ) %>%
   
   # Remove atributos temporários de apoio
@@ -203,13 +200,15 @@ dados_convenios_educacao <- dados_convenios_educacao_raw %>%
     -any_of(c("data_de_inicio_dt", "data_de_termino_dt", 
               "valor_total_num", "valor_pago_num", "percent_num"))
   ) %>% 
-  mutate(acao = acao, 
-         subacao = subacao)
+  mutate(
+    acao    = acao, 
+    subacao = subacao
+  )
 
 url_dados_onibus <- "https://docs.google.com/spreadsheets/d/1ddJpe3vTVUoIGNThNNE5lSS3tJ6K5upTmMLiTrsSqtc/edit?gid=41250456#gid=41250456"
 
 df_onibus <- read_sheet(
-  ss = url_dados_onibus,
+  ss    = url_dados_onibus,
   sheet = "Ônibus"
 ) %>%
   janitor::clean_names()
@@ -231,18 +230,18 @@ df_transporte_final <- df_onibus %>%
     !is.na(codigo_ibge)
   ) %>%
   summarise(
-    qtd_onibus = sum(stringr::str_detect(tipo_de_veiculo, stringr::regex("ÔNIBUS", ignore_case = TRUE)), na.rm = TRUE),
-    qtd_vans   = sum(stringr::str_detect(tipo_de_veiculo, stringr::regex("VAN", ignore_case = TRUE)), na.rm = TRUE),
+    qtd_onibus  = sum(stringr::str_detect(tipo_de_veiculo, stringr::regex("ÔNIBUS", ignore_case = TRUE)), na.rm = TRUE),
+    qtd_vans    = sum(stringr::str_detect(tipo_de_veiculo, stringr::regex("VAN", ignore_case = TRUE)), na.rm = TRUE),
     valor_total = sum(valor_limpo, na.rm = TRUE),
-    .groups = "drop"
+    .groups     = "drop"
   ) %>%
   # 3. Criar a coluna 'produto' no padrão para o Regex do JS pescar
   mutate(
     produto = case_when(
       qtd_onibus > 0 & qtd_vans > 0 ~ paste0(qtd_onibus, " ônibus e ", qtd_vans, " vans"),
-      qtd_onibus > 0 ~ paste0(qtd_onibus, " ônibus"),
-      qtd_vans > 0   ~ paste0(qtd_vans, " vans"),
-      TRUE ~ "0 veículos"
+      qtd_onibus > 0                ~ paste0(qtd_onibus, " ônibus"),
+      qtd_vans > 0                  ~ paste0(qtd_vans, " vans"),
+      TRUE                          ~ "0 veículos"
     )
   ) %>% 
   left_join(
@@ -253,23 +252,22 @@ df_transporte_final <- df_onibus %>%
     by = c('cod_ibge' = 'ibge7')
   ) %>%
   mutate(
-    eixo_estrategico = 'CONHECIMENTO E INOVAÇÃO',
+    eixo_estrategico       = 'CONHECIMENTO E INOVAÇÃO',
     iniciativa_estrategica = 'AQUISIÇÃO DE VANS E ÔNIBUS ESCOLARES',
-    secretaria = 'SEE',
-    status = 'CONCLUÍDA',
-    data_de_inicio = NA_character_,
-    data_de_termino = NA_character_,
-    percent_execucao = '100.0',
-    municipio = toupper(municipio),
-    latitude = NA_character_,
-    longitude = NA_character_,
-    local = NA_character_,
-    observacoes = NA_character_,
-    endereco_target = NA_character_,
-    valor_total = as.character(valor_total),
-    fonte = "SEE"
+    secretaria             = 'SEE',
+    status                 = 'CONCLUÍDA',
+    data_de_inicio         = NA_character_,
+    data_de_termino        = NA_character_,
+    percent_execucao       = '100.0',
+    municipio              = toupper(municipio),
+    latitude               = NA_character_,
+    longitude              = NA_character_,
+    local                  = NA_character_,
+    observacoes            = NA_character_,
+    endereco_target        = NA_character_,
+    valor_total            = as.character(valor_total),
+    fonte                  = "SEE"
   ) 
-
 
 cli_alert_success("Convênios da Educação (SEE) processados com sucesso ({nrow(dados_convenios_educacao)} registros).")
 glimpse(dados_convenios_educacao)
