@@ -51,6 +51,7 @@ DIR_ETL               <- getwd()
 DIR_DADOS             <- DIR_OUT_AURORA
 DIR_DADOS_AURORA_MUNI <- DIR_OUT_AURORA
 DIR_MULUNGU           <- ifelse(is_linux, "/srv/dados/mulungu", file.path(getwd(), "../Mulungu/app_mulungu/data"))
+DIR_EXPORT_PARQUET    <- file.path(DIR_OUT_AURORA, "parquet")
 
 # ------------------------------------------------------------------------------
 # 3. FUNÇÕES AUXILIARES (UTILS)

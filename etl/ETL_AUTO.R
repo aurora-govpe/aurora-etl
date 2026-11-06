@@ -17,7 +17,7 @@ scripts <- c(
   'etl_04_seduh.R',
   'etl_05_iniciativas_join.R',
   'etl_pac.R', # pegar todo mês do site da casa civil
-  #'municipios/etl_urbanizacao.R', # só tem até 2022, então está em standby já que rodou uma vez
+  'municipios/etl_urbanizacao.R', 
   'municipios/etl_demografia_pe.R',
   'municipios/etl_vulnerabilidade_social.R',
   'municipios/etl_mvi_cvp_muni.R',
@@ -27,7 +27,7 @@ scripts <- c(
   #'fiscal/etl_execucao_bdpe.R', # esperar ate regularizar no bdpe
   'fiscal/etl_execucao_IGPE.R',
   'fiscal/etl_execucao_bdpe_IGPE.R',
-  'etl_cozinhas.R',
+  # 'etl_cozinhas.R', # nao ta puxando os dados
   'etl_PCP.R',
   'municipios/etl_ficha_municipal.R',
   'municipios/etl_indicadores_ufs.R', ## falta dados brutos

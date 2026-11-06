@@ -543,7 +543,7 @@ if (file.exists(caminho_demo)) {
 # ------------------------------------------------------------------------------
 
 # 7.0 Definição e criação das pastas de destino
-DIR_EXPORT_DATA    <- "data"
+DIR_EXPORT_DATA    <- "C:/dados/aurora"
 DIR_EXPORT_PARQUET <- file.path(DIR_EXPORT_DATA, "parquet")
 DIR_EXPORT_GEOJSON <- file.path(DIR_EXPORT_DATA, "geojson")
 
@@ -561,6 +561,23 @@ shared_iniciativas %>%
     ibge6 = substr(as.character(.data[[col_ibge]]), 1, 6)
   ) %>% 
   arrow::write_parquet(file.path(DIR_EXPORT_PARQUET, "df_iniciativas.parquet"))
+
+
+df_iniciativas <- shared_iniciativas %>% 
+  sf::st_drop_geometry() %>% 
+  mutate(
+    ibge6 = substr(as.character(.data[[col_ibge]]), 1, 6)
+  )
+
+# Exportação de df_iniciativas em formato JSON
+jsonlite::write_json(
+  x = df_iniciativas,
+  path = file.path(DIR_EXPORT_DATA, "df_iniciativas.json"),
+  pretty = TRUE,
+  auto_unbox = TRUE,
+  na = "null"
+)
+cli_alert_success("Arquivo 'df_iniciativas.json' gravado em: {DIR_EXPORT_DATA}")
 
 # Exportação parquet da base de iniciativas municipais
 base_aurora %>% 
@@ -623,30 +640,46 @@ shared_iniciativas %>%
 #   cli_alert_success("Metadata de atualização gravada no config.yml com sucesso!")
 # }
 
+# Localização do config: busca em 'data/' ou na raiz como fallback
 config_yml_path  <- file.path(DIR_EXPORT_DATA, "config.yml")
 config_json_path <- file.path(DIR_EXPORT_DATA, "config.json")
 
+# Se não estiver em data/, mas existir na raiz, copia para data/
+if (!file.exists(config_yml_path) && file.exists("config.yml")) {
+  file.copy("config.yml", config_yml_path)
+}
+
+data_hora_atual <- format(Sys.time(), "%Y/%m/%d %H:%M")
+
 if (file.exists(config_yml_path)) {
-  # Carrega o YAML como lista estruturada
   config_data <- yaml::read_yaml(config_yml_path)
   
-  # Atualiza a data/hora
-  config_data$update <- format(Sys.time(), "%Y/%m/%d %H:%M")
+  # Se o config tiver estrutura aninhada (ex: config_data$default), atualiza no nó correto
+  if ("default" %in% names(config_data)) {
+    config_data$default$update <- data_hora_atual
+  } else {
+    config_data$update <- data_hora_atual
+  }
   
-  # Salva o config.yml atualizado
+  # Grava config.yml
   yaml::write_yaml(config_data, config_yml_path)
-  cli_alert_success("Metadata de atualização gravada no config.yml com sucesso!")
+  cli_alert_success("Metadata gravada em {config_yml_path}: {data_hora_atual}")
   
-  # Salva a cópia em config.json formatado
+  # Grava config.json
   jsonlite::write_json(
     x = config_data,
     path = config_json_path,
     pretty = TRUE,
     auto_unbox = TRUE
   )
-  cli_alert_success("Configuração exportada para config.json com sucesso!")
+  cli_alert_success("Configuração exportada para {config_json_path} com sucesso!")
+  
 } else {
-  cli_alert_danger("Arquivo {config_yml_path} não encontrado.")
+  # Cria um arquivo novo caso não exista previamente
+  config_data <- list(update = data_hora_atual)
+  yaml::write_yaml(config_data, config_yml_path)
+  jsonlite::write_json(config_data, config_json_path, pretty = TRUE, auto_unbox = TRUE)
+  cli_alert_warning("Arquivo {config_yml_path} não existia; foi inicializado com a data atual.")
 }
 
 cli_alert_success("Bases gerais gravadas em: {DIR_EXPORT_DATA}")

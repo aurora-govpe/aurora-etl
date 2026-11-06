@@ -1,9 +1,15 @@
-
 # Carregamento centralizado de caminhos
-if (file.exists("R/paths.R")) source("R/paths.R") else if (file.exists("paths.R")) source("paths.R") else if (file.exists("../../R/paths.R")) source("../../R/paths.R") else if (file.exists("etl/paths.R")) source("etl/paths.R")
+if (file.exists("R/paths.R")) {
+  source("R/paths.R")
+} else if (file.exists("paths.R")) {
+  source("paths.R")
+} else if (file.exists("../../R/paths.R")) {
+  source("../../R/paths.R")
+} else if (file.exists("etl/paths.R")) {
+  source("etl/paths.R")
+}
 
 cat("🚀 Iniciando execução dos scripts...\n")
-
 tictoc::tic('Tempo ETL')
 
 # Definir caminho da pasta dos scripts
@@ -11,39 +17,39 @@ pasta_scripts <- "etl/mulungu/"
 
 # Lista os scripts que você quer executar
 scripts <- c(
-  '1_notion.R', # não precisa de GP # não precisa de BDPE
-  '2_diario.R', # precisa de GP # não precisa de BDPE
+  '1_notion.R',
+  '2_diario.R',
   '3_plug.R',
   #'4_efisco.R',
   '5_enriquecimento.R'
-  )
+)
 
-# Executa cada script em ordem
-# for (script in scripts) {
-#   caminho <- file.path(pasta_scripts, script)
-#   cat(glue::glue("\n\n🔧 Executando {script}...\n\n"))
-#   source(caminho, local = TRUE)
-# }
-
+# Executa cada script em ordem e interrompe se houver erro
 for (script in scripts) {
   caminho <- file.path(pasta_scripts, script)
+  
+  if (!file.exists(caminho)) {
+    stop(glue::glue("❌ Arquivo não encontrado: {caminho}"), call. = FALSE)
+  }
+  
   cat(glue::glue("\n\n🔧 Executando {script}...\n\n"))
   
-  # O try() envolve a execução e o parâmetro silent = FALSE 
-  # garante que você ainda veja a mensagem de erro no console.
-  resultado <- try(source(caminho, local = TRUE), silent = FALSE)
-  
-  # Verificação opcional: avisa se falhou, mas segue o baile
-  if (inherits(resultado, "try-error")) {
-    cat(glue::glue("\n ⚠️  Atenção: O script {script} falhou, mas a automação continuará.\n"))
-  } else {
-    cat(glue::glue("\n ✅ {script} finalizado com sucesso.\n"))
-  }
+  # Executa o script. Se houver erro, captura a mensagem e aborta imediatamente
+  tryCatch(
+    {
+      source(caminho, local = TRUE)
+      cat(glue::glue("\n ✅ {script} finalizado com sucesso.\n"))
+    },
+    error = function(e) {
+      cat(glue::glue("\n❌ ERRO DETECTADO EM: {script}\n"))
+      # stop() encerra a execução do R e exibe o traceback/mensagem
+      stop(glue::glue("A execução foi interrompida devido a uma falha no script '{script}':\n--> {conditionMessage(e)}"), call. = FALSE)
+    }
+  )
 }
 
 tictoc::toc()
-
-cat("✅ Todos os scripts foram executados com sucesso.\n")
+cat("\n🎉 Todos os scripts foram executados com sucesso!\n")
 
 # envio para servidor ----
 library(ssh)
