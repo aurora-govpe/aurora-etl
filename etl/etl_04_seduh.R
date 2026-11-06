@@ -141,6 +141,18 @@ perpart_df_multi <- read_sheet(ss = url_dados_perpart, sheet = "BASE ANA_NT") %>
     executor               = NA_character_
   )
 
+# Base tabular principal sem geometria
+perpart_df_multi %>% arrow::write_parquet(file.path(DIR_EXPORT_PARQUET, "df_regularizacoes.parquet"))
+
+# Exportação de df_iniciativas em formato JSON
+jsonlite::write_json(
+  x = perpart_df_multi,
+  path = file.path(DIR_OUT_AURORA, "df_regularizacoes.json"),
+  pretty = TRUE,
+  auto_unbox = TRUE,
+  na = "null"
+)
+
 cli_alert_success("Bases da PERPART processadas ({nrow(perpart_df_multi)} registros).")
 
 perpart_df_multi %>% 
@@ -200,5 +212,17 @@ seduh_sehab_df_multi <- dados_seduh_sehab$`Sheet1` %>%
       TRUE ~ uh
     )
   )
+
+# Base tabular principal sem geometria
+seduh_sehab_df_multi %>% arrow::write_parquet(file.path(DIR_EXPORT_PARQUET, "df_habitacao.parquet"))
+
+# Exportação de df_iniciativas em formato JSON
+jsonlite::write_json(
+  x = seduh_sehab_df_multi,
+  path = file.path(DIR_OUT_AURORA, "df_habitacao.json"),
+  pretty = TRUE,
+  auto_unbox = TRUE,
+  na = "null"
+)
 
 cli_alert_success("Base geral da SEHAB processada ({nrow(seduh_sehab_df_multi)} registros).")
