@@ -32,17 +32,17 @@ arquivos_alvo <- c(
 )
 
 # ---- 3. Download Iterativo ----
-arquivos_drive <- drive_ls(as_id(id_pasta))
-
-walk(arquivos_alvo, ~{
-  arquivo_info <- arquivos_drive %>% filter(name == .x)
-  if(nrow(arquivo_info) > 0) {
-    caminho_local <- file.path(pasta_destino, .x)
-    if(!file.exists(caminho_local)) {
+arquivos_faltantes <- arquivos_alvo[!file.exists(file.path(pasta_destino, arquivos_alvo))]
+if (length(arquivos_faltantes) > 0 && exists("auth_path") && file.exists(auth_path)) {
+  arquivos_drive <- drive_ls(as_id(id_pasta))
+  walk(arquivos_faltantes, ~{
+    arquivo_info <- arquivos_drive %>% filter(name == .x)
+    if(nrow(arquivo_info) > 0) {
+      caminho_local <- file.path(pasta_destino, .x)
       drive_download(as_id(arquivo_info$id[1]), path = caminho_local, overwrite = TRUE)
     }
-  }
-})
+  })
+}
 
 # ---- 4. Ingestão e Tratamento ----
 
@@ -242,16 +242,23 @@ painel_pe %>%
   )
 
 # REDES ----
-df_fluxos_intra_pe <- df_arestas_brutas %>%
+df_fluxos_pe <- df_arestas_brutas %>%
   clean_names() %>%
   mutate(
-    origem = as.character(cod_ori),
+    origem  = as.character(cod_ori),
     destino = as.character(cod_dest),
-    uf_ori = as.character(coduf_ori),
+    uf_ori  = as.character(coduf_ori),
     uf_dest = as.character(coduf_dest)
   ) %>%
-  # 1. Filtro Estrito: Origem E Destino devem ser Pernambuco (26)
+  # 1. Filtro: Manter conexões que envolvem Pernambuco (Intra, Entrada e Saída)
   filter(uf_ori == "26" | uf_dest == "26") %>%
+  mutate(
+    tipo_fluxo = case_when(
+      uf_ori == "26" & uf_dest == "26" ~ "intra_pe",
+      uf_ori != "26" & uf_dest == "26" ~ "entrada_pe",
+      uf_ori == "26" & uf_dest != "26" ~ "saida_pe"
+    )
+  ) %>%
   # 2. Transformar em formato longo para mapear os temas
   pivot_longer(
     cols = starts_with("quest_"),
@@ -279,14 +286,14 @@ df_fluxos_intra_pe <- df_arestas_brutas %>%
   )
 
 # 5. Agregação em Formato Largo (Matriz Temática)
-df_redes_tematicas_pe <- df_fluxos_intra_pe %>%
-  group_by(origem, destino) %>%
+df_redes_tematicas_pe <- df_fluxos_pe %>%
+  group_by(origem, destino, tipo_fluxo) %>%
   # Calcula o peso geral (quantos temas motivam a ligação entre as duas cidades)
   mutate(peso_geral = n()) %>% 
   ungroup() %>%
   # Cria uma coluna de peso (intensidade) para cada tema
   pivot_wider(
-    id_cols = c(origem, destino, peso_geral),
+    id_cols = c(origem, destino, tipo_fluxo, peso_geral),
     names_from = tema,
     values_from = intensidade,
     names_prefix = "peso_",
@@ -299,6 +306,7 @@ df_redes_tematicas_pe <- df_fluxos_intra_pe %>%
   select(
     origem, origem_nome, 
     destino, destino_nome, 
+    tipo_fluxo,
     peso_geral, 
     starts_with("peso_")
   ) %>%
