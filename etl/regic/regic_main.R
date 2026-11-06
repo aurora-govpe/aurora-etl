@@ -251,7 +251,7 @@ df_fluxos_intra_pe <- df_arestas_brutas %>%
     uf_dest = as.character(coduf_dest)
   ) %>%
   # 1. Filtro Estrito: Origem E Destino devem ser Pernambuco (26)
-  filter(uf_ori == "26" & uf_dest == "26") %>%
+  filter(uf_ori == "26" | uf_dest == "26") %>%
   # 2. Transformar em formato longo para mapear os temas
   pivot_longer(
     cols = starts_with("quest_"),
