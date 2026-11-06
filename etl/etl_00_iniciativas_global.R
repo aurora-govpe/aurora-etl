@@ -1,4 +1,4 @@
-﻿# ==============================================================================
+# ==============================================================================
 # SCRIPT 00: CONFIGURAÇÕES GLOBAIS E INICIALIZAÇÃO DE AMBIENTE (ETL AURORA)
 # Objetivo: Carregar bibliotecas, definir variáveis de ambiente/diretórios,
 #           funções auxiliares, esquemas de dados e efetuar autenticações de API.
@@ -38,12 +38,17 @@ if (is_linux) {
   Sys.setlocale(locale = "pt_BR.utf8")
 }
 
-# Definição dos diretórios base conforme o ambiente (Servidor Linux vs. Local)
-# Definição dos diretórios base via paths.R
-if (file.exists("R/paths.R")) source("R/paths.R") else if (file.exists("paths.R")) source("paths.R") else if (file.exists("../R/paths.R")) source("../R/paths.R")
-DIR_ETL <- getwd()
-DIR_DADOS <- DIR_OUT_AURORA
+# Definição dos diretórios base via paths.R com busca hierárquica (fallback)
+if (file.exists("R/paths.R")) {
+  source("R/paths.R")
+} else if (file.exists("paths.R")) {
+  source("paths.R")
+} else if (file.exists("../R/paths.R")) {
+  source("../R/paths.R")
+}
 
+DIR_ETL               <- getwd()
+DIR_DADOS             <- DIR_OUT_AURORA
 DIR_DADOS_AURORA_MUNI <- DIR_OUT_AURORA
 DIR_MULUNGU           <- ifelse(is_linux, "/srv/dados/mulungu", file.path(getwd(), "../Mulungu/app_mulungu/data"))
 
@@ -63,11 +68,16 @@ normalize_ascii <- function(x) {
 # ------------------------------------------------------------------------------
 # 4. LEITURA DE CONFIGURAÇÕES E TOKENS
 # ------------------------------------------------------------------------------
-# Carrega script utilitário complementar
+# Carrega script utilitário complementar com resolução dinâmica
 utils_path <- if (file.exists("R/utils.R")) "R/utils.R" else if (file.exists("../R/utils.R")) "../R/utils.R" else file.path(DIR_ETL, "R/utils.R")
 if (file.exists(utils_path)) source(utils_path)
 
-config_path <- if (file.exists(file.path(DIR_RAW_AURORA, "config.yml"))) file.path(DIR_RAW_AURORA, "config.yml") else file.path(DIR_ETL, "config.yml")
+# Resolução dinâmica do config.yml priorizando DIR_RAW_AURORA
+config_path <- if (file.exists(file.path(DIR_RAW_AURORA, "config.yml"))) {
+  file.path(DIR_RAW_AURORA, "config.yml")
+} else {
+  file.path(DIR_ETL, "config.yml")
+}
 
 # Validação da existência do arquivo YAML de configuração
 if (!file.exists(config_path)) {
@@ -114,7 +124,7 @@ colunas_aurora <- c(
   "iniciativa_estrategica", "no_contrato", "tipologia", "produto", "ibge7",
   "municipio", "regiao_de_desenvolvimento", "local", "valor_total", "valor_pago",
   "avanco_cor", "data_de_inicio", "data_de_termino", "fator_de_divisao_municipio",
-  "fonte", "indicador_secundario", "executor", "latitude", "longitude","acao", "subacao"
+  "fonte", "indicador_secundario", "executor", "latitude", "longitude", "acao", "subacao"
 )
 
 # Mapeamento de siglas hospitalares padrão
@@ -126,7 +136,7 @@ dicionario_siglas <- c(
 )
 
 # ------------------------------------------------------------------------------
-# 6. INICIALIZAÇÃO DE OBJETOS VACAZIOS / PLACEHOLDERS
+# 6. INICIALIZAÇÃO DE OBJETOS VAZIOS / PLACEHOLDERS
 # ------------------------------------------------------------------------------
 cehab_df_uni         <- NULL
 cehab_df_multi       <- NULL
@@ -173,10 +183,11 @@ if (!is.null(config_tokens$maespe_beneficiarias_municipio)) {
     config_tokens$maespe_beneficiarias_municipio
   )
 }
+
 # ------------------------------------------------------------------------------
 # 8. EXTRAÇÃO E CARREGAMENTO DE BASES DE SUPORTE
 # ------------------------------------------------------------------------------
-# Carrega esquemas de dados externos
+# Carrega esquemas de dados externos com resolução dinâmica
 esquemas_path <- if (file.exists("R/esquemas_de_dados.R")) "R/esquemas_de_dados.R" else if (file.exists("../R/esquemas_de_dados.R")) "../R/esquemas_de_dados.R" else file.path(DIR_ETL, "R/esquemas_de_dados.R")
 if (file.exists(esquemas_path)) {
   source(esquemas_path)

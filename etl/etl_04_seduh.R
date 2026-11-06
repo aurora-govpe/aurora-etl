@@ -1,4 +1,4 @@
-﻿# ==============================================================================
+# ==============================================================================
 # SCRIPT 04: HABITAÇÃO E DESENVOLVIMENTO URBANO (SEDUH)
 # Órgãos Atendidos: CEHAB, SEDU, PERPART e SEHAB
 # Objetivo: Unificar a carteira de habitação e obras urbanas em formato tabular.
@@ -56,12 +56,11 @@ auth_hugo_path <- file.path(DIR_RAW_AURORA, "r-sheets-hugo-0788cc358cb5.json")
 if (file.exists(auth_hugo_path)) {
   googledrive::drive_auth(path = auth_hugo_path)
 } else {
-  cli_alert_warning("Credencial do Hugo para acesso ao arquivo da SEDU não encontrada!")
+  cli_alert_warning("Credencial do Hugo para acesso ao arquivo da SEDU não encontrada em: {.path {auth_hugo_path}}")
 }
 
 seduh_file_source <- file.path(
   DIR_RAW_AURORA,
-
   glue::glue("seduh_base_geral_aurora_{format(datatime_file_source, '%Y_%m_%d_T%Hh%Mm')}.xlsx")
 )
 
@@ -91,8 +90,8 @@ seduh_df_multi <- readxl::read_excel(seduh_file_source, col_types = "text") %>%
   filter(!fonte %in% c("[SEDUH] Novos Projetos", "[SEDUH] NOVOS PROJETOS")) %>%
   mutate(
     secretaria_unidade = "SEDUH - SEDU",
-    acao = acao, 
-    subacao = subacao,
+    acao               = acao, 
+    subacao            = subacao,
     secretaria         = "SEDUH",
     executor           = if_else(empresa_contratada == "NEOENERGIA", "NEOENERGIA", "SEDUH"),
     endereco_target    = NA_character_,
@@ -152,6 +151,7 @@ perpart_df_multi %>%
   ) %>% 
   mutate(indicador = as.numeric(indicador)) %>% 
   summarise(total = sum(indicador))
+
 
 # ------------------------------------------------------------------------------
 # 4. SEDUH / SEHAB (SECRETARIA EXECUTIVA DE HABITAÇÃO)

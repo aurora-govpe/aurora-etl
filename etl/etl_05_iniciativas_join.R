@@ -40,14 +40,14 @@ locais_iniciativas <- bind_rows(
     perpart_df_multi %>% mutate(across(everything(), as.character), fonte = "PERPART"),
   
   if (exists("df_transporte_final") && !is.null(df_transporte_final)) 
-    df_transporte_final %>% mutate(across(everything(), as.character), fonte = "SEE"),
+    df_transporte_final %>% mutate(across(everything(), as.character), fonte = "SEE")
   
 ) %>%
   mutate(
     # Normalização dos eixos estratégicos
     eixo_estrategico = case_when(
-      str_detect(eixo_estrategico, regex("SEGURANÇ", ignore_case = TRUE))            ~ "SEGURANÇA E CIDADANIA",
-      str_detect(eixo_estrategico, regex("SAÚDE", ignore_case = TRUE))               ~ "SAÚDE E QUALIDADE DE VIDA",
+      str_detect(eixo_estrategico, regex("SEGURANÇ", ignore_case = TRUE))                 ~ "SEGURANÇA E CIDADANIA",
+      str_detect(eixo_estrategico, regex("SAÚDE", ignore_case = TRUE))                    ~ "SAÚDE E QUALIDADE DE VIDA",
       str_detect(eixo_estrategico, regex("HABITAÇÃO|INFRAESTRUTURA", ignore_case = TRUE)) ~ "DESENVOLVIMENTO SUSTENTÁVEL",
       str_detect(eixo_estrategico, regex("EDUCAÇÃO|CULTURA|INOVAÇÃO", ignore_case = TRUE)) ~ "CONHECIMENTO E INOVAÇÃO",
       TRUE ~ eixo_estrategico
@@ -74,28 +74,18 @@ locais_iniciativas %>%
   summarise(total = sum(indicador))
 
 
-
 # ------------------------------------------------------------------------------
 # 2. CARREGAMENTO DE BASES TRANSVERSAIS E DERIVADAS
 # ------------------------------------------------------------------------------
 
-# 2.1 DER / Mulungu e Geometrias de Obras/Projetos
-mulungu_path_parquet <- file.path(DIR_OUT_AURORA, "parquet/base_mulungu_aurora.parquet")
-mulungu_path_rds <- if (file.exists(file.path(DIR_OUT_AURORA, "base_mulungu_aurora.rds"))) {
-  file.path(DIR_OUT_AURORA, "base_mulungu_aurora.rds")
-} else {
-  file.path(DIR_RAW_AURORA, "base_mulungu_aurora.rds")
-}
-base_mulungu_aurora <- if (file.exists(mulungu_path_parquet)) {
-  arrow::read_parquet(mulungu_path_parquet) %>% mutate(fonte = "DER")
-} else if (file.exists(mulungu_path_rds)) {
-  read_rds(mulungu_path_rds) %>% mutate(fonte = "DER")
-} else NULL
+# 2.1 DER / Mulungu e Geometrias de Obras/Projetos via DIR_RAW_AURORA e DIR_DADOS
+mulungu_path <- file.path(DIR_RAW_AURORA, "base_mulungu_aurora.rds")
+base_mulungu_aurora <- if (file.exists(mulungu_path)) read_rds(mulungu_path) %>% mutate(fonte = "DER") else NULL
 
-geom_obras_path     <- if (file.exists(file.path(DIR_OUT_AURORA, "obras_notion_geometrias2.rds"))) file.path(DIR_OUT_AURORA, "obras_notion_geometrias2.rds") else file.path(DIR_RAW_AURORA, "obras_notion_geometrias2.rds")
+geom_obras_path     <- file.path(DIR_DADOS, "obras_notion_geometrias2.rds")
 geometrias_obras    <- if (file.exists(geom_obras_path)) read_rds(geom_obras_path) else NULL
 
-geom_proj_path      <- if (file.exists(file.path(DIR_OUT_AURORA, "projetos_geometrias.rds"))) file.path(DIR_OUT_AURORA, "projetos_geometrias.rds") else file.path(DIR_RAW_AURORA, "projetos_geometrias.rds")
+geom_proj_path      <- file.path(DIR_DADOS, "projetos_geometrias.rds")
 geometrias_projetos <- if (file.exists(geom_proj_path)) read_rds(geom_proj_path) else NULL
 
 
@@ -112,7 +102,7 @@ maes_raw <- tryCatch(
   }
 )
 
-# Salva cópia de segurança local
+# Salva cópia de segurança local no diretório de dados brutos
 write_rds(maes_raw, file.path(DIR_RAW_AURORA, "maes_raw.rds"))
 
 maes_pe <- maes_raw %>%
@@ -198,6 +188,7 @@ df_iniciativas %>%
 teste <- df_iniciativas %>% 
   filter(secretaria_unidade == "SEDUH - SEHAB") 
 unique(teste$iniciativa_estrategica)
+
 library(tidyverse)
 library(lubridate)
 
@@ -298,38 +289,28 @@ iniciativas_cidades_limpas <- df_iniciativas2 %>%
               mutate(municipio = str_to_lower(Município)),
             by = join_by(municipio)) %>% 
   select(-municipio) %>% 
-  # mutate(latitude = if_else((is.na(latitude)) & (!is.na(latitude_sede)), latitude_sede, latitude)) %>% 
-  # mutate(longitude = if_else((is.na(longitude)) & (!is.na(longitude_sede)), longitude_sede, longitude)) %>% 
   mutate(
     latitude = if_else(is.na(latitude), if_else(is.na(latitude_sede), -8.3826, latitude_sede), latitude),
     longitude = if_else(is.na(longitude), if_else(is.na(longitude_sede), -37.8647, longitude_sede), longitude)
-  ) %>%
+  ) %>% 
   janitor::clean_names() %>% 
-  mutate(regiao_de_desenvolvimento = coalesce(regiao_de_desenvolvimento_2, regiao_de_desenvolvimento)) %>%
+  mutate(regiao_de_desenvolvimento = coalesce(regiao_de_desenvolvimento_2, regiao_de_desenvolvimento)) %>% 
   ungroup() %>% 
   group_by(id) %>% 
-  mutate(fator_de_divisao_municipio = 1/n()) %>%
-  mutate(valor_total = valor_total*fator_de_divisao_municipio) %>% 
-  mutate(fator_de_divisao_rd = 1/length(na.omit(unique(regiao_de_desenvolvimento)))) %>%
-  # select(indicador_nome, indicador, latitude, longitude, latitude_sede, longitude_sede, everything()) %>%
-  # filter(!is.na(latitude), !is.na(longitude)) %>% 
-  # filter(
-  #   !(longitude < (-180 - .Machine$double.eps) |
-  #       longitude > (360 + .Machine$double.eps) |
-  #       latitude < (-90 - .Machine$double.eps) |
-  #       latitude > (90 + .Machine$double.eps))) %>%
+  mutate(fator_de_divisao_municipio = 1/n()) %>% 
+  mutate(valor_total = valor_total * fator_de_divisao_municipio) %>% 
+  mutate(fator_de_divisao_rd = 1/length(na.omit(unique(regiao_de_desenvolvimento)))) %>% 
   ungroup() %>% 
   group_by(latitude) %>% 
-  mutate(latitude = round(latitude + (n() > 1)*(.0001/2)*runif(n(), -1, 1), 5)) %>%
+  mutate(latitude = round(latitude + (n() > 1)*(.0001/2)*runif(n(), -1, 1), 5)) %>% 
   ungroup() %>% 
   group_by(longitude) %>% 
-  mutate(longitude = round(longitude + (n() > 1)*(.0001/4)*runif(n(), -1, 1), 5)) %>%
+  mutate(longitude = round(longitude + (n() > 1)*(.0001/4)*runif(n(), -1, 1), 5)) %>% 
   ungroup() %>% 
   st_as_sf(coords = c("longitude", "latitude"), 
-           crs = 4326)  %>% 
+           crs = 4326) %>% 
   ungroup() %>% 
   select(-starts_with(match = "x"))
-
 
 iniciativas_cidades_limpas %>% 
   filter(iniciativa_estrategica == "REFORMA NO LAR I") %>% 
@@ -351,19 +332,19 @@ unique(teste$iniciativa_estrategica)
 # ------------------------------------------------------------------------------
 # 5. CONSTRUÇÃO DA BASE DO MAPA (AURORA GEOJSON & TABLES)
 # ------------------------------------------------------------------------------
-base_aurora <- iniciativas_cidades_limpas %>%
+base_aurora <- iniciativas_cidades_limpas %>% 
   mutate(
-    inicio  = if_else(is.na(data_de_inicio), "S/I", format(data_de_inicio, "%b/%Y")),
-    termino = if_else(is.na(data_de_termino), "S/I", format(data_de_termino, "%b/%Y")),
-    ordem   = row_number(),
+    inicio     = if_else(is.na(data_de_inicio), "S/I", format(data_de_inicio, "%b/%Y")),
+    termino    = if_else(is.na(data_de_termino), "S/I", format(data_de_termino, "%b/%Y")),
+    ordem      = row_number(),
     avanco_cor = as.character(vialactea::get_score_color(percent_execucao)),
     label      = "not a label"
-  ) %>%
-  ungroup() %>%
+  ) %>% 
+  ungroup() %>% 
   mutate(
-    id_produto         = row_number(),
-    secretaria_unidade = if_else(is.na(secretaria_unidade) | secretaria_unidade == "", str_remove(secretaria, " - .*"), secretaria_unidade),
-    secretaria         = str_remove(secretaria, " - .*"),
+    id_produto             = row_number(),
+    secretaria_unidade     = if_else(is.na(secretaria_unidade) | secretaria_unidade == "", str_remove(secretaria, " - .*"), secretaria_unidade),
+    secretaria             = str_remove(secretaria, " - .*"),
     iniciativa_estrategica = str_squish(iniciativa_estrategica)
   )
 
@@ -375,7 +356,6 @@ base_aurora %>%
   mutate(indicador = as.numeric(indicador)) %>% 
   summarise(total = sum(indicador))
 
-
 base_aurora %>% 
   filter(iniciativa_estrategica == "REFORMA NO LAR I") %>% 
   mutate(indicador = as.numeric(indicador)) %>% 
@@ -386,9 +366,6 @@ teste <- base_aurora %>%
 
 # Incorporação de Ícones
 base_aurora_2 <- base_aurora 
-# %>%
-#   relocate(secretaria_unidade, .after = secretaria) %>%
-#   left_join(base_aurora_icones, by = c("iniciativa_estrategica", "secretaria"))
 
 base_aurora_2 %>% 
   filter(
@@ -406,12 +383,6 @@ base_aurora_2 %>%
 teste <- base_aurora_2 %>% 
   filter(secretaria_unidade == "SEDUH - SEHAB") 
 
-# Exporta tabela de controle para conferência de ícones ausentes
-# base_aurora_2 %>%
-#   filter(is.na(icone_tipo)) %>%
-#   select(iniciativa_estrategica, avanco_cor, label, id_produto, icone_tipo)  %>%
-#   writexl::write_xlsx(file.path(DIR_ETL, "data", "mapbox", "base_aurora_icones_aux.xlsx"))
-
 # Estruturação dos códigos para o Mapbox
 base_aurora_3 <- base_aurora_2 %>% 
   mutate(
@@ -419,7 +390,7 @@ base_aurora_3 <- base_aurora_2 %>%
       status == "Em formulação"            ~ "ef",
       status == "Em elaboração de projeto" ~ "ep",
       status == "A licitar"                ~ "al",
-      status == "Em licitação"             ~ "el",
+      status == "Em licitação"              ~ "el",
       status == "A iniciar"                ~ "ai",
       status == "Em execução"              ~ "ee",
       status == "Concluída"                ~ "c",
@@ -429,14 +400,12 @@ base_aurora_3 <- base_aurora_2 %>%
       TRUE ~ NA_character_
     ),
     cd_eixo = case_when(
-      eixo_estrategico == "Conhecimento e inovação"   ~ "ci",
-      eixo_estrategico == "Desenvolvimento sustentável"~ "ds",
-      eixo_estrategico == "Saúde e qualidade de vida" ~ "sqv",
-      eixo_estrategico == "Segurança e cidadania"     ~ "sc",
+      eixo_estrategico == "Conhecimento e inovação"    ~ "ci",
+      eixo_estrategico == "Desenvolvimento sustentável" ~ "ds",
+      eixo_estrategico == "Saúde e qualidade de vida"  ~ "sqv",
+      eixo_estrategico == "Segurança e cidadania"      ~ "sc",
       TRUE ~ NA_character_
-    ),
-    # icon_status = paste0(cd_status, "-", str_to_lower(icone_tipo)),
-    # icon_eixo   = paste0("base-eixo-", cd_eixo, "-", str_to_lower(secretaria))
+    )
   )
 
 base_aurora_geojson <- geojsonsf::sf_geojson(base_aurora_3)
@@ -462,7 +431,7 @@ teste <- base_aurora_3 %>%
 # ------------------------------------------------------------------------------
 shared_iniciativas_temp <- base_aurora_2 %>% 
   mutate(percent_execucao = round(100 * percent_execucao)) %>% 
-  select(any_of(c(colunas_aurora, "latitude", "longitude"))) %>%
+  select(any_of(c(colunas_aurora, "latitude", "longitude"))) %>% 
   rename(ordem = id)
 
 shared_iniciativas_temp %>% 
@@ -494,20 +463,20 @@ shared_iniciativas <- shared_iniciativas_temp %>%
         ) %>%
         select(-id_mulungu)
     } else NULL
-  ) %>%
+  ) %>% 
   # Limpeza final de encodings e padronização de textos
   mutate(
     municipio = if_else(municipio == "Jaboatão dos Guararapes e Recife", "Recife", municipio),
     municipio = if_else(municipio == "Jaboatão dos Guararapes, Recife", "Recife", municipio),
     status    = case_match(
       status,
-      "ConcluÃ­da"                 ~ "Concluída",
-      "Em execuÃ§Ã£o"             ~ "Em execução",
-      "Em elaboraÃ§Ã£o de projeto"~ "Em elaboração de projeto",
+      "ConcluÃ­da"                  ~ "Concluída",
+      "Em execuÃ§Ã£o"              ~ "Em execução",
+      "Em elaboraÃ§Ã£o de projeto" ~ "Em elaboração de projeto",
       "Em formulaÃ§Ã£o"            ~ "Em formulação",
-      "Em licitaÃ§Ã£o"             ~ "Em licitação",
-      "Aprovada"                  ~ "A iniciar",
-      .default                    = status
+      "Em licitaÃ§Ã£o"              ~ "Em licitação",
+      "Aprovada"                   ~ "A iniciar",
+      .default                     = status
     ),
     eixo_estrategico = case_match(
       eixo_estrategico,
@@ -515,24 +484,21 @@ shared_iniciativas <- shared_iniciativas_temp %>%
       "SaÃºde e qualidade de vida"    ~ "Saúde e qualidade de vida",
       "SeguranÃ§a e cidadania"        ~ "Segurança e cidadania",
       "Conhecimento e inovaÃ§Ã£o"    ~ "Conhecimento e inovação",
-      .default                    = eixo_estrategico
+      .default                     = eixo_estrategico
     ),
     across(c(iniciativa_estrategica, produto), ~ str_replace_all(.x, dicionario_siglas))
-    
-    # latitude  = as.numeric(latitude),
-    # longitude = as.numeric(longitude)
   ) %>% 
   # Remove as linhas que possuem a combinação de iniciativa e fonte informadas
   filter(
     !(iniciativa_estrategica == "CRIAÇÃO DE 60 MIL VAGAS EM CRECHES E PRÉ-ESCOLA" & fonte == "SEPE")
   )
 
-shared_iniciativas %>%
+shared_iniciativas %>% 
   filter(iniciativa_estrategica == "REFORMA NO LAR I") %>% 
   mutate(indicador = as.numeric(indicador)) %>% 
   summarise(total = sum(indicador))
 
-shared_iniciativas %>%
+shared_iniciativas %>% 
   filter(
     str_detect(produto, "REGULARIZA"),
     status == "Concluída"
@@ -540,30 +506,30 @@ shared_iniciativas %>%
   mutate(indicador = as.numeric(indicador)) %>% 
   summarise(total = sum(indicador))
 
-teste <- shared_iniciativas %>%
+teste <- shared_iniciativas %>% 
   filter(secretaria_unidade == "SEDUH - SEHAB") 
 
-caminho_demo <- if (file.exists(file.path(DIR_OUT_AURORA, "df_demografia_pe.rds"))) file.path(DIR_OUT_AURORA, "df_demografia_pe.rds") else file.path(DIR_RAW_AURORA, "df_demografia_pe.rds")
+caminho_demo <- file.path(DIR_DADOS_AURORA_MUNI, "df_demografia_pe.rds")
 
 if (file.exists(caminho_demo)) {
   df_demo <- readRDS(caminho_demo)
   
   # Cria o dicionário
-  dicionario_ibge <- df_demo %>%
+  dicionario_ibge <- df_demo %>% 
     st_drop_geometry() %>% 
-    select(municipio, ibge7) %>%
+    select(municipio, ibge7) %>% 
     mutate(
       municipio_norm = norm_mun_ini(municipio),
       cod_ibge = substr(as.character(ibge7), 1, 6),
       ibge6 = substr(as.character(ibge7), 1, 6)
-    ) %>%
-    select(municipio_norm, cod_ibge, ibge6) %>%
+    ) %>% 
+    select(municipio_norm, cod_ibge, ibge6) %>% 
     distinct()
   
   # Cruza com a base final de iniciativas
-  shared_iniciativas <- shared_iniciativas %>%
-    mutate(municipio_norm = norm_mun_ini(municipio)) %>%
-    left_join(dicionario_ibge, by = "municipio_norm") %>%
+  shared_iniciativas <- shared_iniciativas %>% 
+    mutate(municipio_norm = norm_mun_ini(municipio)) %>% 
+    left_join(dicionario_ibge, by = "municipio_norm") %>% 
     select(-municipio_norm)
   
   cli_alert_success("Código IBGE de 6 dígitos cruzado com sucesso na base shared_iniciativas.")
@@ -571,61 +537,123 @@ if (file.exists(caminho_demo)) {
   cli_alert_warning("df_demografia_pe.rds não encontrado. Base shared_iniciativas continuará sem cod_ibge.")
 }
 
+
 # ------------------------------------------------------------------------------
-# 7. EXPORTAÇÕES DE ARQUIVOS (RDS, GEOJSON, YML, DRIVE)
+# 7. EXPORTAÇÕES DE ARQUIVOS (PARQUET, GEOJSON, GERAIS)
 # ------------------------------------------------------------------------------
 
-# 7.1 Exportação para arquivos RDS locais e do App
-write_rds(
-  shared_iniciativas %>% distinct(secretaria, secretaria_unidade) %>% arrange(secretaria_unidade),
-  file.path(DIR_OUT_AURORA, "secretarias_unidades.rds")
-)
+# 7.0 Definição e criação das pastas de destino
+DIR_EXPORT_DATA    <- "data"
+DIR_EXPORT_PARQUET <- file.path(DIR_EXPORT_DATA, "parquet")
+DIR_EXPORT_GEOJSON <- file.path(DIR_EXPORT_DATA, "geojson")
 
-write_rds(base_aurora, file.path(DIR_OUT_AURORA, "iniciativas.rds"))
-write_rds(shared_iniciativas, file.path(DIR_OUT_AURORA, "shared_iniciativas.rds"))
+fs::dir_create(c(DIR_EXPORT_DATA, DIR_EXPORT_PARQUET, DIR_EXPORT_GEOJSON))
 
+# ------------------------------------------------------------------------------
+# 7.1 EXPORTAÇÕES PARQUET (data/parquet/)
+# ------------------------------------------------------------------------------
 col_ibge <- if ("ibge6" %in% names(shared_iniciativas)) "ibge6" else "ibge7"
 
-dir.create(file.path(DIR_OUT_AURORA, "parquet"), recursive = TRUE, showWarnings = FALSE)
-dir.create(file.path(DIR_OUT_AURORA, "geojson"), recursive = TRUE, showWarnings = FALSE)
-
-shared_iniciativas %>%
-  sf::st_drop_geometry() %>%
+# Base tabular principal sem geometria
+shared_iniciativas %>% 
+  sf::st_drop_geometry() %>% 
   mutate(
     ibge6 = substr(as.character(.data[[col_ibge]]), 1, 6)
-  ) %>%
-arrow::write_parquet(file.path(DIR_OUT_AURORA, "parquet/df_iniciativas.parquet"))
+  ) %>% 
+  arrow::write_parquet(file.path(DIR_EXPORT_PARQUET, "df_iniciativas.parquet"))
+
+# Exportação parquet da base de iniciativas municipais
+base_aurora %>% 
+  sf::st_drop_geometry() %>% 
+  arrow::write_parquet(file.path(DIR_EXPORT_PARQUET, "base_aurora.parquet"))
+
+cli_alert_success("Arquivos Parquet gravados em: {DIR_EXPORT_PARQUET}")
+
+# ------------------------------------------------------------------------------
+# 7.2 EXPORTAÇÕES GEOJSON (data/geojson/)
+# ------------------------------------------------------------------------------
+# Base unificada do mapa
+readr::write_lines(base_aurora_geojson, file.path(DIR_EXPORT_GEOJSON, "iniciativas.geojson"))
+
+# Polígonos e geometrias auxiliares
+if (exists("seduh_sehab_shp_poligono_3") && !is.null(seduh_sehab_shp_poligono_3)) {
+  geojsonsf::sf_geojson(seduh_sehab_shp_poligono_3) %>% 
+    readr::write_lines(file.path(DIR_EXPORT_GEOJSON, "df_reforma_no_lar.geojson"))
+}
 
 if (exists("geometrias_obras") && !is.null(geometrias_obras)) {
-  write_rds(geometrias_obras, file.path(DIR_OUT_AURORA, "geometrias_obras.rds"))
+  geojsonsf::sf_geojson(geometrias_obras) %>% 
+    readr::write_lines(file.path(DIR_EXPORT_GEOJSON, "geometrias_obras.geojson"))
 }
 
-# 7.2 Exportação de GeoJSONs
-write_lines(base_aurora_geojson, file.path(DIR_OUT_AURORA, "iniciativas.geojson"))
-
-if (exists("seduh_sehab_shp_poligono_3")) {
-  geojsonsf::sf_geojson(seduh_sehab_shp_poligono_3) %>% write_lines(file.path(DIR_OUT_AURORA, "geojson/df_reforma_no_lar.geojson"))
-}
-if (!is.null(geometrias_obras)) {
-  geojsonsf::sf_geojson(geometrias_obras) %>% write_lines(file.path(DIR_OUT_AURORA, "geojson/geometrias_obras.geojson"))
-}
-if (!is.null(geometrias_projetos)) {
-  geojsonsf::sf_geojson(geometrias_projetos) %>% write_lines(file.path(DIR_OUT_AURORA, "geojson/geometrias_projetos.geojson"))
+if (exists("geometrias_projetos") && !is.null(geometrias_projetos)) {
+  geojsonsf::sf_geojson(geometrias_projetos) %>% 
+    readr::write_lines(file.path(DIR_EXPORT_GEOJSON, "geometrias_projetos.geojson"))
 }
 
-# 7.3 Atualização de Metadata do config.yml
-config_yml_path <- file.path(DIR_OUT_AURORA, "config.yml")
-if (!file.exists(config_yml_path) && file.exists(file.path(DIR_RAW_AURORA, "config.yml"))) {
-  file.copy(file.path(DIR_RAW_AURORA, "config.yml"), config_yml_path)
+cli_alert_success("Camadas GeoJSON gravadas em: {DIR_EXPORT_GEOJSON}")
+
+# ------------------------------------------------------------------------------
+# 7.3 DEMAIS ARQUIVOS (PASTA GERAL: data/)
+# ------------------------------------------------------------------------------
+# Arquivos RDS locais de uso operacional
+write_rds(
+  shared_iniciativas %>% distinct(secretaria, secretaria_unidade) %>% arrange(secretaria_unidade),
+  file.path(DIR_EXPORT_DATA, "secretarias_unidades.rds")
+)
+
+write_rds(base_aurora, file.path(DIR_EXPORT_DATA, "iniciativas.rds"))
+write_rds(shared_iniciativas, file.path(DIR_EXPORT_DATA, "shared_iniciativas.rds"))
+
+if (exists("geometrias_obras") && !is.null(geometrias_obras)) {
+  write_rds(geometrias_obras, file.path(DIR_EXPORT_DATA, "geometrias_obras.rds"))
 }
+
+# Planilha consolidada de conferência
+shared_iniciativas %>% 
+  select(secretaria, secretaria_unidade, eixo_estrategico, iniciativa_estrategica, produto) %>% 
+  writexl::write_xlsx(file.path(DIR_EXPORT_DATA, "iniciativas_resumo.xlsx"))
+
+# Atualização de Metadata do config.yml
+# config_yml_path <- file.path(DIR_EXPORT_DATA, "config.yml")
+# if (file.exists(config_yml_path)) {
+#   config_file <- readr::read_lines(config_yml_path)
+#   config_file[4] <- glue::glue("  update: \"{ format(Sys.time(), '%Y/%m/%d %H:%M') }\"")
+#   readr::write_lines(config_file, config_yml_path, append = FALSE)
+#   cli_alert_success("Metadata de atualização gravada no config.yml com sucesso!")
+# }
+
+config_yml_path  <- file.path(DIR_EXPORT_DATA, "config.yml")
+config_json_path <- file.path(DIR_EXPORT_DATA, "config.json")
+
 if (file.exists(config_yml_path)) {
-  config_file <- readr::read_lines(config_yml_path)
-  config_file[4] <- glue::glue("  update: \"{ format(Sys.time(), '%Y/%m/%d %H:%M') }\"")
-  write_lines(config_file, config_yml_path, append = FALSE)
+  # Carrega o YAML como lista estruturada
+  config_data <- yaml::read_yaml(config_yml_path)
+  
+  # Atualiza a data/hora
+  config_data$update <- format(Sys.time(), "%Y/%m/%d %H:%M")
+  
+  # Salva o config.yml atualizado
+  yaml::write_yaml(config_data, config_yml_path)
   cli_alert_success("Metadata de atualização gravada no config.yml com sucesso!")
+  
+  # Salva a cópia em config.json formatado
+  jsonlite::write_json(
+    x = config_data,
+    path = config_json_path,
+    pretty = TRUE,
+    auto_unbox = TRUE
+  )
+  cli_alert_success("Configuração exportada para config.json com sucesso!")
+} else {
+  cli_alert_danger("Arquivo {config_yml_path} não encontrado.")
 }
 
-# 7.4 Upload do Relatório Consolidado para o Google Drive
+cli_alert_success("Bases gerais gravadas em: {DIR_EXPORT_DATA}")
+
+# ------------------------------------------------------------------------------
+# 7.4 SINCRONIZAÇÃO EM NUVEM (GOOGLE DRIVE)
+# ------------------------------------------------------------------------------
 caminho_temp_upload <- tempfile(fileext = ".xlsx")
 writexl::write_xlsx(shared_iniciativas, caminho_temp_upload)
 
@@ -637,13 +665,4 @@ googledrive::drive_upload(
   overwrite = TRUE
 )
 
-shared_iniciativas %>%
-  select(
-    secretaria, secretaria_unidade, eixo_estrategico, iniciativa_estrategica, produto
-  ) %>%
-  writexl::write_xlsx(
-    'data/obras/iniciativas_aurora.xlsx'
-  )
-
 cli_alert_success("Base 'shared_iniciativas' enviada para o Google Drive com sucesso!")
-

@@ -1,4 +1,4 @@
-﻿# ==============================================================================
+# ==============================================================================
 # SCRIPT 03: TRATAMENTO E PROCESSAMENTO DE DADOS - IPA E SEPE
 # Objetivo: Download e estruturação das bases de metas do IPA (download via 
 #           Google Drive) e projetos de engenharia da SEPE (Google Sheets).
@@ -22,10 +22,9 @@ if (is.null(ipa_id) || is.na(ipa_id)) {
   cli_abort("Arquivo 'ipa_base_geral_aurora' não encontrado no mapeamento de planilhas do Google Drive!")
 }
 
-# 1.3 Download do arquivo Excel do Google Drive
+# 1.3 Download do arquivo Excel do Google Drive para DIR_RAW_AURORA
 ipa_file_source <- file.path(
   DIR_RAW_AURORA, 
- 
   glue::glue("ipa_base_geral_aurora_{format(datatime_file_source, '%Y_%m_%d_T%Hh%Mm')}.xlsx")
 )
 
@@ -69,10 +68,10 @@ cli_alert_success("Bases do IPA baixadas e carregadas com sucesso.")
 
 
 # ------------------------------------------------------------------------------
-# 2. SEPE (SECRETARIA EXECUTIVA DE PROJETOS EESTRATÉGICOS)
+# 2. SEPE (SECRETARIA EXECUTIVA DE PROJETOS ESTRATÉGICOS)
 # ------------------------------------------------------------------------------
 
-# 2.1 Autenticação Google Sheets
+# 2.1 Autenticação Google Sheets via DIR_RAW_AURORA
 googlesheets_token_path <- file.path(DIR_RAW_AURORA, "r-sheets-hugo-0788cc358cb5.json")
 
 if (file.exists(googlesheets_token_path)) {
