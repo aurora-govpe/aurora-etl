@@ -1,52 +1,14 @@
-﻿# install.packages(c("duckdb", "dotenv", "dplyr"))
-library(duckdb) # Nosso motor de leitura de dados
-library(dotenv) # Ler as credenciais do arquivo .env
-library(dplyr)
-
-# Opção equivalente para formatação de números decimais
-options(scipen = 999, digits = 2)
-
-# Carrega variáveis do arquivo .env
-load_dot_env(".env")
-
-# Conexão em memória com DuckDB
-con <- dbConnect(duckdb::duckdb())
-
-# Configuração de extensão httpfs e parâmetros S3
-dbExecute(con, "INSTALL httpfs;")
-dbExecute(con, "LOAD httpfs;")
-dbExecute(con, "SET s3_endpoint  = '10.238.75.21:9000';")
-dbExecute(con, "SET s3_url_style = 'path';")
-dbExecute(con, "SET s3_use_ssl   = false;")
-dbExecute(con, "SET s3_region    = 'us-east-1';")
-
-# Injeção das credenciais obtidas do arquivo .env
-dbExecute(con, sprintf("SET s3_access_key_id     = '%s';", Sys.getenv("AWS_ACCESS_KEY_ID")))
-dbExecute(con, sprintf("SET s3_secret_access_key = '%s';", Sys.getenv("AWS_SECRET_ACCESS_KEY")))
-
-SOURCE_DESPESA <- "s3://warehouse/orcamento/despesa/Ano=2026/data_0.parquet"
-
-# query_describe <- sprintf("DESCRIBE SELECT * FROM read_parquet('%s', hive_partitioning = True)", SOURCE_DESPESA)
-# 
-# dbGetQuery(con, query_describe)
-
-query_df <- sprintf("
-    SELECT *
-    FROM read_parquet('%s')
-", SOURCE_DESPESA)
-
-df <- dbGetQuery(con, query_df)
-
-
-
-
-
-
-
 # ==============================================================================
-### ETL
+# SCRIPT: ETL EXECUÇÃO ORÇAMENTÁRIA (E-FISCO / DUCKDB S3 -> AURORA)
+# Objetivo: Conectar ao MinIO/S3 via DuckDB, extrair despesas de 2026, aplicar
+#           regras de negócio orçamentárias e exportar Parquets para as aplicações.
 # ==============================================================================
 
+# ------------------------------------------------------------------------------
+# 1. CARREGAMENTO DE PACOTES
+# ------------------------------------------------------------------------------
+library(duckdb)
+library(dotenv)
 library(dplyr)
 library(janitor)
 library(stringr)
@@ -56,9 +18,84 @@ library(tidyr)
 library(cli)
 library(lubridate)
 
-# ==============================================================================
-# 1. Definição de Variáveis Globais e Regras
-# ==============================================================================
+# Opção para formatação de números decimais
+options(scipen = 999, digits = 2)
+
+# ------------------------------------------------------------------------------
+# 2. RESOLUÇÃO DE DIRETÓRIOS E AMBIENTE (FALLBACK HIERÁRQUICO)
+# ------------------------------------------------------------------------------
+if (file.exists("R/paths.R")) {
+  source("R/paths.R")
+} else if (file.exists("paths.R")) {
+  source("paths.R")
+} else if (file.exists("../R/paths.R")) {
+  source("../R/paths.R")
+} else if (file.exists("../paths.R")) {
+  source("../paths.R")
+} else if (file.exists("etl/paths.R")) {
+  source("etl/paths.R")
+}
+
+# Fallbacks defensivos para execuções avulsas
+if (!exists("DIR_ETL"))        DIR_ETL        <- getwd()
+if (!exists("DIR_RAW_AURORA")) DIR_RAW_AURORA <- file.path(DIR_ETL, "data")
+if (!exists("DIR_OUT_AURORA")) DIR_OUT_AURORA <- file.path(DIR_ETL, "data")
+
+# Busca dinâmica do arquivo .env com credenciais S3
+env_path <- if (file.exists(".env")) {
+  ".env"
+} else if (file.exists(file.path(DIR_ETL, ".env"))) {
+  file.path(DIR_ETL, ".env")
+} else if (file.exists("../.env")) {
+  "../.env"
+} else {
+  NULL
+}
+
+if (!is.null(env_path)) {
+  load_dot_env(env_path)
+  cli_alert_success("Arquivo {.file .env} carregado a partir de: {.path {env_path}}")
+} else {
+  cli_alert_warning("Arquivo {.file .env} não encontrado! Utilizando variáveis de ambiente existentes.")
+}
+
+# ------------------------------------------------------------------------------
+# 3. CONEXÃO DUCKDB E EXTRAÇÃO S3 (MINIO)
+# ------------------------------------------------------------------------------
+con <- dbConnect(duckdb::duckdb())
+
+df <- tryCatch({
+  dbExecute(con, "INSTALL httpfs;")
+  dbExecute(con, "LOAD httpfs;")
+  dbExecute(con, "SET s3_endpoint   = '10.238.75.21:9000';")
+  dbExecute(con, "SET s3_url_style  = 'path';")
+  dbExecute(con, "SET s3_use_ssl    = false;")
+  dbExecute(con, "SET s3_region     = 'us-east-1';")
+  
+  # Injeção das credenciais obtidas do arquivo .env / ambiente
+  dbExecute(con, sprintf("SET s3_access_key_id     = '%s';", Sys.getenv("AWS_ACCESS_KEY_ID")))
+  dbExecute(con, sprintf("SET s3_secret_access_key = '%s';", Sys.getenv("AWS_SECRET_ACCESS_KEY")))
+  
+  SOURCE_DESPESA <- "s3://warehouse/orcamento/despesa/Ano=2026/data_0.parquet"
+  
+  query_df <- sprintf("
+      SELECT *
+      FROM read_parquet('%s')
+  ", SOURCE_DESPESA)
+  
+  cli_alert_info("Consultando dados de despesa via DuckDB...")
+  res <- dbGetQuery(con, query_df)
+  cli_alert_success("Dados de despesa extraídos com sucesso ({nrow(res)} linhas).")
+  res
+}, error = function(e) {
+  cli_abort("Falha ao consultar MinIO/S3 via DuckDB: {.val {e$message}}")
+}, finally = {
+  dbDisconnect(con, shutdown = TRUE)
+})
+
+# ------------------------------------------------------------------------------
+# 4. DEFINIÇÃO DE VARIÁVEIS GLOBAIS E HELPERS
+# ------------------------------------------------------------------------------
 vars_indicadores <- c(
   "dotacao_inicial", "dotacao_autorizada", "prog_financeira", 
   "empenhado", "liquidado", "liquidado_compet", "pago", "pago_rp"
@@ -66,9 +103,7 @@ vars_indicadores <- c(
 vars_numericas <- c("ano", "mes", vars_indicadores)
 vars_orcamento  <- c("dotacao_inicial", "dotacao_autorizada", "prog_financeira", "empenhado")
 
-DIR_BASE <- if (Sys.info()["sysname"] == "Linux") "/srv/rotinas" else file.path(getwd(), "data")
-
-# Helper para conversão numérica 100% segura
+# Helper para conversão numérica segura
 parse_num_safe <- function(x) {
   if (is.numeric(x)) return(as.numeric(x))
   x_char <- as.character(x)
@@ -79,14 +114,13 @@ parse_num_safe <- function(x) {
   }
 }
 
-# ==============================================================================
-# 2. Leitura, Renomeação e Padronização Inicial de Tipos
-# ==============================================================================
-cli::cli_alert_info("Iniciando limpeza e renomeação das colunas...")
+# ------------------------------------------------------------------------------
+# 5. LIMPEZA, RENOMEAÇÃO E PADRONIZAÇÃO DE TIPOS
+# ------------------------------------------------------------------------------
+cli_alert_info("Iniciando limpeza e padronização dos tipos...")
 
 execucao_2026 <- df %>% 
   janitor::clean_names() %>% 
-  # Renomeação das colunas de valores/indicadores para os nomes originais do script
   rename(
     dotacao_inicial    = valor_dotacao_inicial,
     dotacao_autorizada = valor_dotacao_autorizada,
@@ -94,27 +128,39 @@ execucao_2026 <- df %>%
     empenhado          = valor_empenhado,
     liquidado          = valor_liquidado,
     liquidado_compet   = valor_liquidado_comp,
-    pago               = valor_pago_s_restos,  # Ajuste conforme sua regra se pago for s/ restos
-    pago_rp            = valor_pago_c_restos   # Ajuste conforme sua regra se pago_rp for c/ restos
+    pago               = valor_pago_s_restos,
+    pago_rp            = valor_pago_c_restos
   ) %>% 
-  # Garante presença do ano correto
   mutate(
     ano = if ("ano" %in% names(.)) coalesce(as.numeric(ano), 2026) else 2026
   ) %>% 
-  # Aplica conversão de tipos (numéricas vs texto)
   mutate(across(any_of(vars_numericas), parse_num_safe)) %>% 
   mutate(across(-any_of(vars_numericas), as.character))
 
-# ==============================================================================
-# 3. Carga dos Dados de Operação de Crédito
-# ==============================================================================
-caminho_op_cred <- if (file.exists('data/efisco/dados_op_cred.rds')) {
-  'data/efisco/dados_op_cred.rds'
+# ------------------------------------------------------------------------------
+# 6. CARGA DOS DADOS DE OPERAÇÃO DE CRÉDITO
+# ------------------------------------------------------------------------------
+caminho_op_cred <- if (file.exists(file.path(DIR_OUT_AURORA, "parquet/dados_op_cred.parquet"))) {
+  file.path(DIR_OUT_AURORA, "parquet/dados_op_cred.parquet")
+} else if (file.exists(file.path(DIR_OUT_AURORA, "dados_op_cred.parquet"))) {
+  file.path(DIR_OUT_AURORA, "dados_op_cred.parquet")
+} else if (file.exists(file.path(DIR_RAW_AURORA, "efisco/dados_op_cred.rds"))) {
+  file.path(DIR_RAW_AURORA, "efisco/dados_op_cred.rds")
+} else if (file.exists(file.path(DIR_OUT_AURORA, "dados_op_cred.rds"))) {
+  file.path(DIR_OUT_AURORA, "dados_op_cred.rds")
 } else {
-  file.path(DIR_BASE, 'dados_op_cred.rds')
+  file.path(DIR_RAW_AURORA, "dados_op_cred.rds")
 }
 
-dados_op_cred <- readRDS(caminho_op_cred)
+if (!file.exists(caminho_op_cred)) {
+  cli_abort("Arquivo de operações de crédito não localizado: {.path {caminho_op_cred}}")
+}
+
+dados_op_cred <- if (str_ends(caminho_op_cred, "\\.parquet")) {
+  arrow::read_parquet(caminho_op_cred)
+} else {
+  readr::read_rds(caminho_op_cred)
+}
 
 codigos_op_credito <- dados_op_cred %>%
   drop_na(cod_operacao) %>% 
@@ -122,27 +168,24 @@ codigos_op_credito <- dados_op_cred %>%
   str_remove("^0+") %>% 
   unique()
 
-# ==============================================================================
-# 4. Aplicação de Regras de Negócio e Classificações
-# ==============================================================================
-cli::cli_alert_info("Aplicando marcadores e regras de negócio...")
+cli_alert_success("Operações de crédito mapeadas ({length(codigos_op_credito)} códigos distintos).")
 
-# Validação do campo 'despesa_gerencial' se não existir na base de entrada
+# ------------------------------------------------------------------------------
+# 7. REGRAS DE NEGÓCIO E CLASSIFICAÇÕES
+# ------------------------------------------------------------------------------
+cli_alert_info("Aplicando marcadores e regras de negócio orçamentárias...")
+
 if (!"despesa_gerencial" %in% names(execucao_2026)) {
   execucao_2026 <- execucao_2026 %>% mutate(despesa_gerencial = NA_character_)
 }
 
 execucao_bdpe_2 <- execucao_2026 %>%
   mutate(
-    # Marcador de Devolução (Regex original)
     is_devolucao = str_detect(coalesce(despesa_gerencial, ""), regex("DEVOLU[CÇ]([AÃ]O|[OÕ]ES)", ignore_case = TRUE)),
-    # Marcador de Operação de Crédito (Remoção de zeros à esquerda original)
     is_op_cred   = str_remove(coalesce(fonte_detalhada_cod, ""), "^0+") %in% codigos_op_credito
   )
 
-# ==============================================================================
-# 5. Separação nas Bases Finais (Execução vs Orçamento)
-# ==============================================================================
+# Separação nas bases finais
 execucao_bdpe_vf <- execucao_bdpe_2 %>%
   filter(mes != 99)
 
@@ -150,37 +193,38 @@ orcamento_bdpe_vf <- execucao_bdpe_2 %>%
   mutate(soma_alvo = rowSums(across(any_of(vars_orcamento)), na.rm = TRUE)) %>%
   filter(soma_alvo != 0)
 
-# ==============================================================================
-# 6. Salvamento dos Parquets Finais
-# ==============================================================================
-destinos <- c("app_aurora_orcamento/data", "app_aurora_novo/data")
+# ------------------------------------------------------------------------------
+# 8. EXPORTAÇÃO DOS ARQUIVOS (PARQUET & RDS)
+# ------------------------------------------------------------------------------
+# Diretórios estruturados
+dir_parquet_out   <- file.path(DIR_OUT_AURORA, "parquet")
+dir_out_orcamento <- file.path(DIR_OUT_AURORA, "orcamento")
+dir_raw_execucao  <- file.path(DIR_RAW_AURORA, "efisco/execucao")
 
-for (dest in destinos) {
-  if (!dir.exists(dest)) dir.create(dest, recursive = TRUE)
-  
-  # Base ajustada com mês 99 -> 1 para o diretório raiz
-  execucao_bdpe_2 %>% 
-    mutate(mes = ifelse(mes == 99, 1, mes)) %>% 
-    write_parquet('data/efisco/execucao/execucao_bdpe_2026_IGPE.parquet')
-  
-  # Bases de Execução e Orçamento para as apps
-  write_parquet(execucao_bdpe_vf, file.path(dest, 'execucao_bdpe_2026_IGPE.parquet'))
-  write_parquet(orcamento_bdpe_vf, file.path(dest, 'orcamento_bdpe_2026_IGPE.parquet'))
-}
+dir.create(DIR_OUT_AURORA, recursive = TRUE, showWarnings = FALSE)
+dir.create(dir_parquet_out, recursive = TRUE, showWarnings = FALSE)
+dir.create(dir_out_orcamento, recursive = TRUE, showWarnings = FALSE)
+dir.create(dir_raw_execucao, recursive = TRUE, showWarnings = FALSE)
 
-cli::cli_alert_success("ETL e exportação dos Parquets executados com sucesso!")
+# 8.1 Base consolidada para repositório raw/efisco
+caminho_parquet_raw <- file.path(dir_raw_execucao, "execucao_bdpe_2026_IGPE.parquet")
+execucao_bdpe_2 %>% 
+  mutate(mes = ifelse(mes == 99, 1, mes)) %>% 
+  arrow::write_parquet(caminho_parquet_raw, compression = "snappy")
 
+# 8.2 Exportação Parquet principal em DIR_OUT_AURORA e /parquet
+arrow::write_parquet(execucao_bdpe_vf, file.path(DIR_OUT_AURORA, "execucao_bdpe_2026_IGPE.parquet"), compression = "snappy")
+arrow::write_parquet(orcamento_bdpe_vf, file.path(DIR_OUT_AURORA, "orcamento_bdpe_2026_IGPE.parquet"), compression = "snappy")
 
+arrow::write_parquet(execucao_bdpe_vf, file.path(dir_parquet_out, "execucao_bdpe_2026_IGPE.parquet"), compression = "snappy")
+arrow::write_parquet(orcamento_bdpe_vf, file.path(dir_parquet_out, "orcamento_bdpe_2026_IGPE.parquet"), compression = "snappy")
 
+# 8.3 Cópia no subdiretório orcamento/
+arrow::write_parquet(execucao_bdpe_vf, file.path(dir_out_orcamento, "execucao_bdpe_2026_IGPE.parquet"), compression = "snappy")
+arrow::write_parquet(orcamento_bdpe_vf, file.path(dir_out_orcamento, "orcamento_bdpe_2026_IGPE.parquet"), compression = "snappy")
 
-# execucao_bdpe_CORRENTE <- read_parquet('data/efisco/execucao/execucao_bdpe_2026_IGPE.parquet') %>% 
-#   filter(ano == 2026)
-# 
-# execucao_bdpe_sem_corrente <- read_parquet('data/efisco/execucao/execucao_bdpe.parquet') %>% 
-#   filter(ano != lubridate::year(Sys.Date()))
-# 
-# execucao_final <- bind_rows(execucao_bdpe_sem_corrente,execucao_bdpe_CORRENTE)
-# 
-# write_parquet(execucao_final,"app_aurora_orcamento/data/execucao_bdpe.parquet" )
+# 8.4 Backup em RDS para aplicações legadas
+readr::write_rds(execucao_bdpe_vf, file.path(DIR_OUT_AURORA, "execucao_bdpe_2026_IGPE.rds"))
+readr::write_rds(orcamento_bdpe_vf, file.path(DIR_OUT_AURORA, "orcamento_bdpe_2026_IGPE.rds"))
 
-
+cli_alert_success("ETL e exportação dos Parquets executados com sucesso em {.path {DIR_OUT_AURORA}}!")

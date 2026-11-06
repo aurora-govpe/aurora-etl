@@ -21,6 +21,7 @@ dir_aurora     <- "C:/dados/aurora"
 cache_geo_path <- file.path(DIR_OUT_AURORA, "cache_geocodificacao_cozinhas.json")
 mapa_pe_path   <- file.path(dir_aurora, "mapa_pe.json")
 out_rds_path   <- file.path(DIR_OUT_AURORA, "df_cozinhas.rds")
+out_parquet_path   <- file.path(DIR_OUT_AURORA, "parquet/df_cozinhas.parquet")
 out_json_path  <- file.path(DIR_OUT_AURORA, "df_cozinhas.json")
 
 # setup conexao trino ----
@@ -41,7 +42,7 @@ cli::cli_alert_success("Conexão Trino estabelecida!")
 
 # 1. extracao via sql (com fallback para rds local) ----
 shp_pe_mun_limites <- readRDS(file.path(DIR_RAW_AURORA, "pernambuco_sf.rds")) %>%
-clean_names()
+  clean_names()
 
 equipamentos_bdpe <- tryCatch(
   {
@@ -63,8 +64,8 @@ df_cozinhas <- equipamentos_bdpe %>%
   left_join(
     shp_pe_mun_limites %>%
       st_drop_geometry() %>%
-    select(ibge7, municipio, regiao_de_desenvolvimento) %>%
-    mutate(ibge7 = as.integer(ibge7)),
+      select(ibge7, municipio, regiao_de_desenvolvimento) %>%
+      mutate(ibge7 = as.integer(ibge7)),
     by = c("cod_ibge" = "ibge7")
   ) %>%
   mutate(
@@ -152,6 +153,7 @@ df_cozinhas <- df_cozinhas %>%
 # 7. gravacao final e encerramento ----
 saveRDS(df_cozinhas, out_rds_path)
 write_json(df_cozinhas, out_json_path, pretty = TRUE, auto_unbox = TRUE)
+write_parquet(df_cozinhas, out_parquet_path)
 
 dbDisconnect(con)
 cli::cli_alert_success("ETL finalizado com sucesso e conexão encerrada!")
