@@ -1,7 +1,8 @@
 # ==============================================================================
 # SCRIPT: etl_op_cred.R
 # Objetivo: Extração de dados de operações de crédito via Google Sheets,
-#           limpeza inicial e exportação unificada (RDS e Parquet) para o Aurora.
+#           limpeza inicial e exportação particionada por formato (RDS e Parquet)
+#           para o Aurora e backup efisco.
 # ==============================================================================
 
 # ------------------------------------------------------------------------------
@@ -31,6 +32,8 @@ if (file.exists("R/paths.R")) {
   source("R/paths.R")
 } else if (file.exists("paths.R")) {
   source("paths.R")
+} else if (file.exists("../R/paths.R")) {
+  source("../R/paths.R")
 } else if (file.exists("../paths.R")) {
   source("../paths.R")
 } else if (file.exists("etl/paths.R")) {
@@ -42,13 +45,20 @@ if (!exists("DIR_ETL"))        DIR_ETL        <- getwd()
 if (!exists("DIR_RAW_AURORA")) DIR_RAW_AURORA <- file.path(DIR_ETL, "data")
 if (!exists("DIR_OUT_AURORA")) DIR_OUT_AURORA <- file.path(DIR_ETL, "data")
 
-# Estrutura de diretórios de saída
+# Estrutura modular de diretórios por formato
 dir_parquet_out <- file.path(DIR_OUT_AURORA, "parquet")
-dir_efisco_raw  <- file.path(DIR_RAW_AURORA, "efisco")
+dir_rds_out     <- file.path(DIR_OUT_AURORA, "rds")
 
-dir.create(DIR_OUT_AURORA, recursive = TRUE, showWarnings = FALSE)
-dir.create(dir_parquet_out, recursive = TRUE, showWarnings = FALSE)
-dir.create(dir_efisco_raw, recursive = TRUE, showWarnings = FALSE)
+# Estrutura de backup efisco por formato
+dir_efisco_raw         <- file.path(DIR_RAW_AURORA, "efisco")
+dir_efisco_parquet_raw <- file.path(dir_efisco_raw, "parquet")
+dir_efisco_rds_raw     <- file.path(dir_efisco_raw, "rds")
+
+# Criação segura dos diretórios
+purrr::walk(
+  list(dir_parquet_out, dir_rds_out, dir_efisco_parquet_raw, dir_efisco_rds_raw),
+  ~ dir.create(.x, recursive = TRUE, showWarnings = FALSE)
+)
 
 # ------------------------------------------------------------------------------
 # 3. AUTENTICAÇÃO GOOGLE
@@ -87,19 +97,24 @@ dados_op_cred <- tryCatch({
 cli_alert_success("Dados de operações de crédito carregados com sucesso ({nrow(dados_op_cred)} registros).")
 
 # ------------------------------------------------------------------------------
-# 5. EXPORTAÇÃO LOCAL UNIFICADA (RDS & PARQUET)
+# 5. EXPORTAÇÃO LOCAL POR FORMATO (RDS & PARQUET)
 # ------------------------------------------------------------------------------
-# Saídas em DIR_OUT_AURORA
-path_out_rds     <- file.path(DIR_OUT_AURORA, "dados_op_cred.rds")
-path_out_parquet <- file.path(DIR_OUT_AURORA, "dados_op_cred.parquet")
-path_sub_parquet <- file.path(dir_parquet_out, "dados_op_cred.parquet")
+# Caminhos de saída principal (DIR_OUT_AURORA/{formato})
+path_out_parquet <- file.path(dir_parquet_out, "dados_op_cred.parquet")
+path_out_rds     <- file.path(dir_rds_out, "dados_op_cred.rds")
 
-readr::write_rds(dados_op_cred, path_out_rds)
+# Caminhos de backup (DIR_RAW_AURORA/efisco/{formato})
+path_backup_parquet <- file.path(dir_efisco_parquet_raw, "dados_op_cred.parquet")
+path_backup_rds     <- file.path(dir_efisco_rds_raw, "dados_op_cred.rds")
+
+# Escrita dos arquivos Parquet
 arrow::write_parquet(dados_op_cred, path_out_parquet, compression = "snappy")
-arrow::write_parquet(dados_op_cred, path_sub_parquet, compression = "snappy")
+arrow::write_parquet(dados_op_cred, path_backup_parquet, compression = "snappy")
 
-# Espelhamento em DIR_RAW_AURORA/efisco
-readr::write_rds(dados_op_cred, file.path(dir_efisco_raw, "dados_op_cred.rds"))
-arrow::write_parquet(dados_op_cred, file.path(dir_efisco_raw, "dados_op_cred.parquet"), compression = "snappy")
+# Escrita dos arquivos RDS
+readr::write_rds(dados_op_cred, path_out_rds)
+readr::write_rds(dados_op_cred, path_backup_rds)
 
-cli_alert_success("Exportação concluída em RDS e Parquet em {.path {DIR_OUT_AURORA}} e backup em {.path {dir_efisco_raw}}.")
+cli_alert_success("Exportação concluída em suas respectivas pastas:")
+cli_alert_info("Parquet: {.path {path_out_parquet}} e {.path {path_backup_parquet}}")
+cli_alert_info("RDS:     {.path {path_out_rds}} e {.path {path_backup_rds}}")

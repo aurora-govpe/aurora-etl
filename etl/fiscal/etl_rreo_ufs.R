@@ -1,13 +1,14 @@
-﻿# pacotes ----
+# pacotes ----
 library(dplyr)
 library(googledrive)
 library(ibger)
 library(purrr)
 library(stringr)
 library(tesouror)
+library(jsonlite)
 
 # config ----
-ano_atual              <- 2026
+ano_atual               <- 2026
 forcar_redownload_atual <- TRUE # Mude para TRUE se o SICONFI retificar o bimestre/quadrimestre atual
 
 descobrir_ultimo_periodo <- function(ano, relatorio = c("RREO", "RGF"), ente_teste = 35) {
@@ -44,17 +45,32 @@ descobrir_ultimo_periodo <- function(ano, relatorio = c("RREO", "RGF"), ente_tes
   return(1) # Fallback padrão de segurança
 }
 
-#bimestre_atual         <- 2
-#quadrimestre_atual     <- 1
-
 bimestre_atual     <- descobrir_ultimo_periodo(ano_atual, "RREO")
 quadrimestre_atual <- descobrir_ultimo_periodo(ano_atual, "RGF")
 
 # caminhos e pastas ----
+base_dir_aurora <- "C:/dados/aurora"
+
+# Função utilitária para garantir e retornar pastas por extensão/tipo
+obter_pasta_tipo <- function(tipo) {
+  pasta <- file.path(base_dir_aurora, tipo)
+  if (!dir.exists(pasta)) {
+    dir.create(pasta, showWarnings = FALSE, recursive = TRUE)
+  }
+  return(pasta)
+}
+
+# Garante a criação das pastas principais
+dir_rds  <- obter_pasta_tipo("rds")
+dir_csv  <- obter_pasta_tipo("csv")
+dir_json <- obter_pasta_tipo("json")
+
+# Estrutura local legada mantida como suporte (se necessário para a app)
 dir.create("data", showWarnings = FALSE, recursive = TRUE)
 dir.create("app_aurora_fiscal/data", showWarnings = FALSE, recursive = TRUE)
 
-caminho_cache_raw <- "data/raw_siconfi_cache.rds"
+# Salva o cache bruto no C:/dados/aurora/rds
+caminho_cache_raw <- file.path(dir_rds, "raw_siconfi_cache.rds")
 
 # codigos ufs ----
 codigos_ufs <- c(
@@ -73,7 +89,7 @@ if (file.exists(caminho_cache_raw)) {
   cache_raw <- list(
     rreo_1 = NULL, 
     rreo_2 = NULL, 
-    rreo_4 = NULL,
+    rreo_4 = NULL, 
     rreo_9 = NULL, 
     rreo_14 = NULL, 
     rgf_06 = NULL
@@ -118,13 +134,11 @@ params_rgf_alvo <- bind_rows(
 # 3. Funções Auxiliares de Download Incremental ----
 
 baixar_rreo_incremental <- function(params_alvo, anexo, df_cache, forcar = FALSE) {
-  # Se forçar recarga, remove os dados do período atual do cache
   if (forcar && !is.null(df_cache) && nrow(df_cache) > 0) {
     df_cache <- df_cache %>% 
       filter(!(exercicio == ano_atual & periodo == bimestre_atual))
   }
   
-  # Descobre o que ainda não foi baixado
   if (!is.null(df_cache) && nrow(df_cache) > 0) {
     chaves_existentes <- paste(df_cache$exercicio, df_cache$periodo, df_cache$cod_ibge, sep = "_")
     params_faltantes <- params_alvo %>% 
@@ -214,24 +228,15 @@ baixar_rgf_incremental <- function(params_alvo, df_cache, forcar = FALSE) {
 # 4. Executar Downloads Incrementais ----
 cat("\n--- Atualizando Cache Bruto ---\n")
 cache_raw$rreo_1  <- baixar_rreo_incremental(params_rreo_alvo, "RREO-Anexo 01", cache_raw$rreo_1, forcar_redownload_atual)
-
 cache_raw$rreo_2  <- baixar_rreo_incremental(params_rreo_alvo, "RREO-Anexo 02", cache_raw$rreo_2, forcar_redownload_atual)
-
-cache_raw$rreo_4 <- baixar_rreo_incremental(
-  params_rreo_alvo, 
-  "RREO-Anexo 04", 
-  cache_raw$rreo_4, 
-  forcar_redownload_atual
-)
-
+cache_raw$rreo_4  <- baixar_rreo_incremental(params_rreo_alvo, "RREO-Anexo 04", cache_raw$rreo_4, forcar_redownload_atual)
 cache_raw$rreo_9  <- baixar_rreo_incremental(params_rreo_9_alvo, "RREO-Anexo 09", cache_raw$rreo_9, forcar_redownload_atual)
-
 cache_raw$rreo_14 <- baixar_rreo_incremental(params_rreo_alvo, "RREO-Anexo 14", cache_raw$rreo_14, forcar_redownload_atual)
 cache_raw$rgf_06  <- baixar_rgf_incremental(params_rgf_alvo, cache_raw$rgf_06, forcar_redownload_atual)
 
-# Salva o cache bruto atualizado no disco
+# Salva o cache bruto atualizado no disco (em C:/dados/aurora/rds/)
 saveRDS(cache_raw, caminho_cache_raw)
-cat("-> Cache de dados brutos atualizado e salvo localmente.\n")
+cat("-> Cache de dados brutos atualizado e salvo em:", caminho_cache_raw, "\n")
 
 # 5. Processamento dos Indicadores ----
 cat("\n--- Processando Indicadores do Painel ---\n")
@@ -252,7 +257,6 @@ base_painel <- base_bruta_unica %>%
   ) %>%
   mutate(
     indicador = case_when(
-      # --- REGRAS DO RREO ---
       coluna %in% c("Até o Bimestre") & conta %in% c("Superávit Orçamentário", "Déficit Orçamentário") ~ "Resultado Orçamentário",
       coluna == "Resultado Apurado até o Bimestre (b)" & conta %in% c("Resultado Primário - Acima da Linha", "RESULTADO PRIMÁRIO (SEM RPPS) - Acima da Linha") ~ "Resultado Primário",
       coluna == "Resultado Apurado até o Bimestre (b)" & conta %in% c("Resultado Nominal - Acima da Linha", "RESULTADO NOMINAL (SEM RPPS) - Abaixo da Linha") ~ "Resultado Nominal",
@@ -261,56 +265,31 @@ base_painel <- base_bruta_unica %>%
       coluna == "% Aplicado Até o Bimestre" & grepl("Manutenção e Desenvolvimento do Ensino", conta) ~ "Vinculação - Educação",
       
       coluna == "Até o Bimestre" & cod_conta %in% c('ReceitasRealizadasDemonstrativoSimplificadoBalancoOrcamentario') & conta == "Receitas Realizadas" ~ "Receitas Realizadas",
-      
       coluna == "Até o Bimestre (c)" & cod_conta %in% c('TransferenciasDeCapitalDaUniaoEDeSuasEntidades') ~ "Transf. União (Capital)",
-      
       coluna == "Até o Bimestre (c)" & cod_conta %in% c('TransferenciasCorrentesDaUniaoEDeSuasEntidades') ~ "Transf. União (Corrente)",
-      
       coluna %in% c("Até o Bimestre (c)") & conta == "Impostos" ~ "Receitas de Impostos",
-      
       coluna %in% c("Até o Bimestre (c)") & conta == "RECEITAS DE CAPITAL" ~ "Receitas de Capital",
-      
       coluna %in% c("DESPESAS EMPENHADAS ATÉ O BIMESTRE (f)") & conta == "DESPESAS DE CAPITAL" ~ "Despesas de Capital - Emp.",
       
-      # --- REGRAS DO RREO 2 ---
-      
       coluna %in% c("DESPESAS LIQUIDADAS ATÉ O BIMESTRE (d)") & cod_conta %in% c('RREO2TotalDespesas') & conta %in% c("Administração") ~ "Administração",
-      
       coluna %in% c("DESPESAS LIQUIDADAS ATÉ O BIMESTRE (d)") & cod_conta %in% c('RREO2TotalDespesas') & conta %in% c("Agricultura") ~ "Agricultura",
-      
       coluna %in% c("DESPESAS LIQUIDADAS ATÉ O BIMESTRE (d)") & cod_conta %in% c('RREO2TotalDespesas') & conta %in% c("Assistência Social") ~ "Assistência Social",
-      
       coluna %in% c("DESPESAS LIQUIDADAS ATÉ O BIMESTRE (d)") & cod_conta %in% c('RREO2TotalDespesas') & conta %in% c("Ciência e Tecnologia") ~ "Ciência e Tecnologia",
-      
       coluna %in% c("DESPESAS LIQUIDADAS ATÉ O BIMESTRE (d)") & cod_conta %in% c('RREO2TotalDespesas') & conta %in% c("Cultura") ~ "Cultura",
-      
       coluna %in% c("DESPESAS LIQUIDADAS ATÉ O BIMESTRE (d)") & cod_conta %in% c('RREO2TotalDespesas') & conta %in% c("Direitos da Cidadania") ~ "Direitos da Cidadania",
-      
       coluna %in% c("DESPESAS LIQUIDADAS ATÉ O BIMESTRE (d)") & cod_conta %in% c('RREO2TotalDespesas') & conta %in% c("Educação") ~ "Educação",
-      
       coluna %in% c("DESPESAS LIQUIDADAS ATÉ O BIMESTRE (d)") & cod_conta %in% c('RREO2TotalDespesas') & conta %in% c("Gestão Ambiental") ~ "Gestão Ambiental",
-      
       coluna %in% c("DESPESAS LIQUIDADAS ATÉ O BIMESTRE (d)") & cod_conta %in% c('RREO2TotalDespesas') & conta %in% c("Habitação") ~ "Habitação",
-      
       coluna %in% c("DESPESAS LIQUIDADAS ATÉ O BIMESTRE (d)") & cod_conta %in% c('RREO2TotalDespesas') & conta %in% c("Judiciária") ~ "Judiciária",
-      
       coluna %in% c("DESPESAS LIQUIDADAS ATÉ O BIMESTRE (d)") & cod_conta %in% c('RREO2TotalDespesas') & conta %in% c("Legislativa") ~ "Legislativa",
-      
       coluna %in% c("DESPESAS LIQUIDADAS ATÉ O BIMESTRE (d)") & cod_conta %in% c('RREO2TotalDespesas') & conta %in% c("Previdência Social") ~ "Previdência Social",
-      
       coluna %in% c("DESPESAS LIQUIDADAS ATÉ O BIMESTRE (d)") & cod_conta %in% c('RREO2TotalDespesas') & conta %in% c("Saneamento") ~ "Saneamento",
-      
       coluna %in% c("DESPESAS LIQUIDADAS ATÉ O BIMESTRE (d)") & cod_conta %in% c('RREO2TotalDespesas') & conta %in% c("Saúde") ~ "Saúde",
-      
       coluna %in% c("DESPESAS LIQUIDADAS ATÉ O BIMESTRE (d)") & cod_conta %in% c('RREO2TotalDespesas') & conta %in% c("Segurança Pública") ~ "Segurança Pública",
-      
       coluna %in% c("DESPESAS LIQUIDADAS ATÉ O BIMESTRE (d)") & cod_conta %in% c('RREO2TotalDespesas') & conta %in% c("Trabalho") ~ "Trabalho",
-      
       coluna %in% c("DESPESAS LIQUIDADAS ATÉ O BIMESTRE (d)") & cod_conta %in% c('RREO2TotalDespesas') & conta %in% c("Transporte") ~ "Transporte",
-      
       coluna %in% c("DESPESAS LIQUIDADAS ATÉ O BIMESTRE (d)") & cod_conta %in% c('RREO2TotalDespesas') & conta %in% c("Urbanismo") ~ "Urbanismo",
       
-      # --- REGRAS DO RGF ---
       coluna == "% SOBRE A RCL AJUSTADA" & startsWith(conta, "Despesa Total com Pessoal - DTP") ~ "DTP/RCL",
       coluna == "% SOBRE A RCL AJUSTADA" & grepl("Dívida Consolidada Líquida", conta, ignore.case = TRUE) ~ "Dívida Consolidada Líquida",
       
@@ -319,27 +298,17 @@ base_painel <- base_bruta_unica %>%
     
     grupo = case_when(
       indicador %in% c('DTP/RCL', 'Dívida Consolidada Líquida', 'Resultado Nominal', 'Resultado Orçamentário', 'Resultado Primário', 'Vinculação - Educação', 'Vinculação - Saúde') ~ 'Resultados',
-      
-      indicador %in% c(
-        'Receita Corrente Líquida', 'Receitas Realizadas', 'Receitas de Impostos', 'Transf. União (Capital)', 'Transf. União (Corrente)', 'Receitas de Capital'
-        ) ~ 'Receitas',
-      
-      indicador %in% c(
-        'Despesas de Capital - Emp.',
-        'Ciência e Tecnologia', 'Educação', 'Habitação', 'Saúde', 'Segurança Pública', 'Transporte', 'Urbanismo') ~ 'Despesas',
-      
+      indicador %in% c('Receita Corrente Líquida', 'Receitas Realizadas', 'Receitas de Impostos', 'Transf. União (Capital)', 'Transf. União (Corrente)', 'Receitas de Capital') ~ 'Receitas',
+      indicador %in% c('Despesas de Capital - Emp.', 'Ciência e Tecnologia', 'Educação', 'Habitação', 'Saúde', 'Segurança Pública', 'Transporte', 'Urbanismo') ~ 'Despesas',
       TRUE ~ NA_character_
-      
-      ),
+    ),
     
     ordem = case_when(
       grupo %in% c('Resultados') ~ 1,
       grupo %in% c('Receitas') ~ 2,
       grupo %in% c('Despesas') ~ 3,
-      
       TRUE ~ NA_integer_
     )
-    
   ) %>%
   filter(!is.na(indicador)) %>%
   mutate(
@@ -348,8 +317,6 @@ base_painel <- base_bruta_unica %>%
   select(uf, exercicio, periodicidade, periodo, indicador, grupo, ordem, valor) %>%
   arrange(uf, exercicio, indicador) %>% 
   distinct()
-
-base_painel %>% glimpse()
 
 ## população -----
 dados_populacao_uf <- ibge_variables(6579, localities = "N3")
@@ -370,40 +337,30 @@ populacao_tratada <- dados_populacao_uf %>%
   ) %>%
   select(uf, exercicio, populacao)
 
-# --- INÍCIO DA PROJEÇÃO ---
-# Descobre o último ano disponível na base do IBGE e o ano mais recente do seu painel
 ano_max_ibge <- max(populacao_tratada$exercicio, na.rm = TRUE)
 ano_limite_dados <- max(base_painel$exercicio, na.rm = TRUE) 
 
-# Se a base do IBGE estiver defasada em relação ao RREO/RGF (ex: IBGE vai até 2022 e RREO até 2026)
 if (ano_limite_dados > ano_max_ibge) {
-  
-  # Pega a população do último ano disponível
   ultima_pop <- populacao_tratada %>% 
     filter(exercicio == ano_max_ibge) %>% 
     select(uf, populacao)
   
-  # Cria as combinações para os anos que faltam (ex: 2023 a 2026)
   anos_faltantes <- expand.grid(
     uf = unique(ultima_pop$uf),
     exercicio = (ano_max_ibge + 1):ano_limite_dados
   )
   
-  # Junta as populações replicadas
   projecao <- anos_faltantes %>% 
     left_join(ultima_pop, by = "uf")
   
-  # Empilha com a base original de população
   populacao_tratada <- bind_rows(populacao_tratada, projecao) %>%
     arrange(uf, exercicio)
 }
 
 ## indicadores derivados ----
-# Resultado Orçamentário Relativo
 ind_orc_rcl <- base_painel %>%
   filter(indicador == "Resultado Orçamentário") %>%
   rename(val_resultado = valor) %>%
-  # Faz o join com as linhas de RCL garantindo que uf, exercicio, e periodo batam
   inner_join(
     base_painel %>% 
       filter(indicador == "Receita Corrente Líquida") %>% 
@@ -418,10 +375,8 @@ ind_orc_rcl <- base_painel %>%
   ) %>%
   select(uf, exercicio, periodicidade, periodo, indicador, grupo, ordem, valor)
 
-# Resultado Orçamentário per capita
 ind_orc_per_capita <- base_painel %>%
   filter(indicador == "Resultado Orçamentário") %>%
-  # Faz o join com a população com base na uf e exercicio (ano)
   inner_join(populacao_tratada, by = c("uf", "exercicio")) %>%
   mutate(
     valor = valor / populacao,
@@ -431,11 +386,9 @@ ind_orc_per_capita <- base_painel %>%
   ) %>%
   select(uf, exercicio, periodicidade, periodo, indicador, grupo, ordem, valor)
 
-# Resultado fiscal = Resultado Primário / RCL
 ind_res_fiscal <- base_painel %>%
   filter(indicador == "Resultado Primário") %>%
   rename(val_primario = valor) %>%
-  # Faz o join com a RCL garantindo as mesmas chaves
   inner_join(
     base_painel %>% 
       filter(indicador == "Receita Corrente Líquida") %>% 
@@ -458,7 +411,6 @@ base_painel <- bind_rows(
 ) %>%
   arrange(uf, exercicio, ordem, indicador)
 
-# Monta o objeto para API
 df_bimestral <- base_painel[base_painel$periodicidade == "Bimestral", ]
 
 dict_periodos <- lapply(
@@ -467,7 +419,6 @@ dict_periodos <- lapply(
 )
 
 ## ipca ----
-# 1. Puxa os dados
 ipca_bruto <- ibge_variables(
   aggregate = 1737,    
   variable = 2266,     
@@ -475,24 +426,17 @@ ipca_bruto <- ibge_variables(
   localities = "BR"    
 )
 
-# 2. Cria a tabela enxuta
 tabela_fatores <- ipca_bruto %>%
   mutate(
-    # Usa parse_ibge_value para tratar strings sujas, apontando para a coluna 'value'
     valor_numerico = parse_ibge_value(value), 
-    
-    # Extrai o ano da coluna 'period' (ex: "197912" -> 1979)
     ano = as.integer(str_sub(period, 1, 4))
   ) %>%
   filter(ano >= 2018) %>%
-  # Ordena pelo 'period' cronologicamente
   arrange(ano, period) %>%
   group_by(ano) %>%
-  # Pega o último mês disponível de cada ano
   slice_tail(n = 1) %>% 
   ungroup() %>%
   mutate(
-    # Fator = Último índice de todos / Índice do ano específico
     fator_atualizacao = last(valor_numerico) / valor_numerico
   ) %>%
   select(ano, indice_ipca = valor_numerico, fator_atualizacao)
@@ -503,11 +447,9 @@ dict_ipca <- as.list(setNames(tabela_fatores$fator_atualizacao, as.character(tab
 base_previdencia <- cache_raw$rreo_4 %>%
   filter(
     periodo %in% c(bimestre_atual, 6),
-    # Captura flexível das colunas do estágio da despesa
     grepl("DOTAÇÃO ATUALIZADA|EMPENHADAS ATÉ O BIMESTRE|LIQUIDADAS ATÉ O BIMESTRE|PAGAS ATÉ O BIMESTRE", coluna, ignore.case = TRUE)
   ) %>%
   mutate(
-    # Padronização dos estágios
     estagio = case_when(
       grepl("DOTAÇÃO", coluna, ignore.case = TRUE) ~ "dotacao",
       grepl("EMPENHADAS", coluna, ignore.case = TRUE) ~ "empenhado",
@@ -515,16 +457,11 @@ base_previdencia <- cache_raw$rreo_4 %>%
       grepl("PAGAS", coluna, ignore.case = TRUE) ~ "pago",
       TRUE ~ coluna
     ),
-    
-    # Classificação dos blocos
     bloco = case_when(
       grepl("MILITARES", conta, ignore.case = TRUE) | conta %in% c("Inatividade", "Pensões", "Outras Despesas") ~ "Militares",
       TRUE ~ "RPPS"
     ),
-    
-    # Criação da Ordem Numérica para preservar o layout original no Shiny
     ordem_linha = case_when(
-      # Bloco RPPS
       grepl("^Benefícios", conta, ignore.case = TRUE) ~ 1,
       grepl("^Aposentadorias", conta, ignore.case = TRUE) ~ 2,
       grepl("^Pensões por Morte", conta, ignore.case = TRUE) ~ 3,
@@ -534,13 +471,11 @@ base_previdencia <- cache_raw$rreo_4 %>%
       grepl("TOTAL DAS DESPESAS DO FUNDO EM REPARTIÇÃO", conta, ignore.case = TRUE) ~ 7,
       grepl("RESULTADO PREVIDENCIÁRIO", conta, ignore.case = TRUE) ~ 8,
       
-      # Bloco Militares
       grepl("^Inatividade", conta, ignore.case = TRUE) ~ 1,
       grepl("^Pensões$", conta, ignore.case = TRUE) ~ 2,
       grepl("^Outras Despesas$", conta, ignore.case = TRUE) ~ 3,
       grepl("TOTAL DAS DESPESAS COM INATIVOS E PENSIONISTAS MILITARES", conta, ignore.case = TRUE) ~ 4,
       grepl("RESULTADO ASSOCIADO ÀS PENSÕES", conta, ignore.case = TRUE) ~ 5,
-      
       TRUE ~ NA_real_
     )
   ) %>%
@@ -560,12 +495,25 @@ objeto_pronto_api <- list(
   dados_previdencia = base_previdencia
 )
 
-# 6. Salvar Arquivos Finais ----
-saveRDS(objeto_pronto_api, 'app_aurora_fiscal/data/base_painel.rds')
+# 6. Salvar Arquivos Finais em C:/dados/aurora/{rds, csv, json} ----
+cat("\n--- Salvando Arquivos Locais ---\n")
 
-write.csv2(base_painel, 'app_aurora_fiscal/data/base_painel.csv', row.names = FALSE)
+# RDS
+caminho_painel_rds <- file.path(dir_rds, "base_painel.rds")
+saveRDS(objeto_pronto_api, caminho_painel_rds)
 
-cat("-> Arquivos locais compilados com sucesso.\n")
+# CSV
+caminho_painel_csv <- file.path(dir_csv, "base_painel.csv")
+write.csv2(base_painel, caminho_painel_csv, row.names = FALSE)
+
+# JSON
+caminho_painel_json <- file.path(dir_json, "base_painel.json")
+jsonlite::write_json(objeto_pronto_api, caminho_painel_json, pretty = TRUE, auto_unbox = TRUE)
+
+cat("-> Arquivos salvos em:\n")
+cat("   - RDS :", caminho_painel_rds, "\n")
+cat("   - CSV :", caminho_painel_csv, "\n")
+cat("   - JSON:", caminho_painel_json, "\n")
 
 # 7. Upload para o Google Drive ----
 cat("\n--- Realizando Upload no Google Drive ---\n")

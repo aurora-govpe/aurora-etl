@@ -211,7 +211,8 @@ seduh_sehab_df_multi <- dados_seduh_sehab$`Sheet1` %>%
       str_detect(iniciativa_estrategica, "REFORMA NO LAR") & status == "A iniciar" ~ cadastrados,
       TRUE ~ uh
     )
-  )
+  ) %>% 
+  mutate(valor_global_orcado3 = valor_total)
 
 # Base tabular principal sem geometria
 seduh_sehab_df_multi %>% arrow::write_parquet(file.path(DIR_EXPORT_PARQUET, "df_habitacao.parquet"))
