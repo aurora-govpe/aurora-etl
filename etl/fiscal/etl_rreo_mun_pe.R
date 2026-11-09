@@ -1,13 +1,14 @@
-﻿# pacotes ----
+# pacotes ----
 library(dplyr)
 library(googledrive)
 library(ibger)
 library(purrr)
 library(stringr)
 library(tesouror)
+library(jsonlite)
 
 # config ----
-ano_atual              <- 2026
+ano_atual               <- 2026
 forcar_redownload_atual <- FALSE # Mude para TRUE se o SICONFI retificar o bimestre/quadrimestre atual
 
 descobrir_ultimo_periodo <- function(ano, relatorio = c("RREO", "RGF"), ente_teste = 35) {
@@ -48,22 +49,38 @@ bimestre_atual     <- descobrir_ultimo_periodo(ano_atual, "RREO")
 quadrimestre_atual <- descobrir_ultimo_periodo(ano_atual, "RGF")
 
 # caminhos e pastas ----
+base_dir_aurora <- "C:/dados/aurora"
+
+obter_pasta_tipo <- function(tipo) {
+  pasta <- file.path(base_dir_aurora, tipo)
+  if (!dir.exists(pasta)) {
+    dir.create(pasta, showWarnings = FALSE, recursive = TRUE)
+  }
+  return(pasta)
+}
+
+dir_rds  <- obter_pasta_tipo("rds")
+dir_csv  <- obter_pasta_tipo("csv")
+dir_json <- obter_pasta_tipo("json")
+
+# Pastas locais de apoio
 dir.create("data", showWarnings = FALSE, recursive = TRUE)
 dir.create("app_aurora_municipios/data", showWarnings = FALSE, recursive = TRUE)
+dir.create("app_aurora_fiscal/data", showWarnings = FALSE, recursive = TRUE)
 
-# Alterado o nome do cache para não misturar com os estados
-caminho_cache_raw <- "data/raw_siconfi_cache_mun.rds" 
+# Cache bruto em C:/dados/aurora/rds
+caminho_cache_raw <- file.path(dir_rds, "raw_siconfi_cache_mun.rds")
 
 # 1. Carregar Cache Local (se existir) ----
 if (file.exists(caminho_cache_raw)) {
   cache_raw <- readRDS(caminho_cache_raw)
   cat("-> Cache histórico carregado com sucesso!\n")
 } else {
-  cache_raw <- list(rreo_1 = NULL, rreo_2 = NULL, rreo_9 = NULL, rreo_14 = NULL, rgf_06 = NULL)
+  cache_raw <- list(rreo_1 = NULL, rreo_2 = NULL, rreo_3 = NULL, rreo_9 = NULL, rreo_14 = NULL, rgf_06 = NULL)
   cat("-> Nenhum cache encontrado. Uma carga completa será feita nesta primeira execução.\n")
 }
 
-# 2. Definir Tabela de Parâmetros Alvo (Sem código IBGE, pois a API puxa o estado inteiro) ----
+# 2. Definir Tabela de Parâmetros Alvo ----
 params_rreo_alvo <- bind_rows(
   expand.grid(
     fiscal_year = 2019:(ano_atual - 1), 
@@ -92,7 +109,7 @@ params_rgf_alvo <- bind_rows(
   )
 ) %>% distinct()
 
-# 3. Funções Auxiliares de Download Incremental (Adaptadas para Municípios) ----
+# 3. Funções Auxiliares de Download Incremental ----
 baixar_rreo_incremental_mun <- function(params_alvo, anexo, df_cache, forcar = FALSE) {
   if (forcar && !is.null(df_cache) && nrow(df_cache) > 0) {
     df_cache <- df_cache %>% 
@@ -100,7 +117,6 @@ baixar_rreo_incremental_mun <- function(params_alvo, anexo, df_cache, forcar = F
   }
   
   if (!is.null(df_cache) && nrow(df_cache) > 0) {
-    # Verifica apenas o ano e período, assumindo que se tem, tem pra todos os municípios
     chaves_existentes <- paste(df_cache$exercicio, df_cache$periodo, sep = "_")
     params_faltantes <- params_alvo %>% 
       mutate(chave = paste(fiscal_year, period, sep = "_")) %>% 
@@ -189,20 +205,15 @@ baixar_rgf_incremental_mun <- function(params_alvo, df_cache, forcar = FALSE) {
 # 4. Executar Downloads Incrementais ----
 cat("\n--- Atualizando Cache Bruto ---\n")
 cache_raw$rreo_1  <- baixar_rreo_incremental_mun(params_rreo_alvo, "RREO-Anexo 01", cache_raw$rreo_1, forcar_redownload_atual)
-
 cache_raw$rreo_2  <- baixar_rreo_incremental_mun(params_rreo_alvo, "RREO-Anexo 02", cache_raw$rreo_2, forcar_redownload_atual)
-
 cache_raw$rreo_3  <- baixar_rreo_incremental_mun(params_rreo_alvo, "RREO-Anexo 03", cache_raw$rreo_3, forcar_redownload_atual)
-
 cache_raw$rreo_9  <- baixar_rreo_incremental_mun(params_rreo_9_alvo, "RREO-Anexo 09", cache_raw$rreo_9, forcar_redownload_atual)
-
 cache_raw$rreo_14 <- baixar_rreo_incremental_mun(params_rreo_alvo, "RREO-Anexo 14", cache_raw$rreo_14, forcar_redownload_atual)
-
 cache_raw$rgf_06  <- baixar_rgf_incremental_mun(params_rgf_alvo, cache_raw$rgf_06, forcar_redownload_atual)
 
-# Salva o cache bruto atualizado no disco
+# Salva o cache bruto em C:/dados/aurora/rds/
 saveRDS(cache_raw, caminho_cache_raw)
-cat("-> Cache de dados brutos atualizado e salvo localmente.\n")
+cat("-> Cache de dados brutos atualizado e salvo em:", caminho_cache_raw, "\n")
 
 # 5. Processamento dos Indicadores ----
 cat("\n--- Processando Indicadores do Painel ---\n")
@@ -221,14 +232,12 @@ base_painel <- base_bruta_unica %>%
       (periodicidade == "Quadrimestral" & periodo %in% c(quadrimestre_atual, 3))
   ) %>%
   mutate(
-    # Conversão temporal sugerida anteriormente
     mes_referencia = case_when(
       periodicidade == "Bimestral" ~ as.integer(periodo * 2),
       periodicidade == "Quadrimestral" ~ as.integer(periodo * 4)
     ),
     
     indicador = case_when(
-      
       ## RREO 1 ----
       ### Resultados ----
       coluna %in% c("Até o Bimestre") & conta %in% c("Superávit Orçamentário", "Déficit Orçamentário") ~ "Resultado Orçamentário",
@@ -239,7 +248,6 @@ base_painel <- base_bruta_unica %>%
       coluna == "% Aplicado Até o Bimestre" & grepl("Manutenção e Desenvolvimento do Ensino", conta) ~ "Vinculação - Educação",
       
       ### Receitas ----
-      
       coluna == "Até o Bimestre" & cod_conta %in% c('ReceitasRealizadasDemonstrativoSimplificadoBalancoOrcamentario') & conta == "Receitas Realizadas" ~ "Receitas Realizadas",
       coluna == "Até o Bimestre (c)" & cod_conta %in% c('TransferenciasDeCapitalDaUniaoEDeSuasEntidades') ~ "Transf. União (Capital)",
       coluna == "Até o Bimestre (c)" & cod_conta %in% c('TransferenciasCorrentesDaUniaoEDeSuasEntidades') ~ "Transf. União (Corrente)",
@@ -247,7 +255,6 @@ base_painel <- base_bruta_unica %>%
       coluna %in% c("Até o Bimestre (c)") & conta == "RECEITAS DE CAPITAL" ~ "Receitas de Capital",
       
       ### Despesas ----
-      
       coluna %in% c("DESPESAS EMPENHADAS ATÉ O BIMESTRE (f)") & conta == "DESPESAS DE CAPITAL" ~ "Despesas de Capital - Emp.",
       coluna %in% c("DESPESAS LIQUIDADAS ATÉ O BIMESTRE (h)") & cod_conta == "PessoalEEncargosSociais" ~ "Despesas de Pessoal - Liq.",
       coluna %in% c("DESPESAS LIQUIDADAS ATÉ O BIMESTRE (h)") & cod_conta == "JurosEEncargosDaDivida" ~ "Juros e Encargos - Liq.",
@@ -304,7 +311,6 @@ base_painel <- base_bruta_unica %>%
     valor = ifelse(conta == "Déficit Orçamentário", valor * -1, valor),
     cod_ibge = as.character(cod_ibge)
   ) %>%
-  # Trocado 'uf' para 'cod_ibge' e 'ente' (instituicao no tesouror)
   select(cod_ibge, ente = instituicao, exercicio, periodicidade, periodo, mes_referencia, indicador, grupo, ordem, valor) %>%
   arrange(cod_ibge, exercicio, indicador) %>% 
   distinct()
@@ -312,7 +318,14 @@ base_painel <- base_bruta_unica %>%
 base_painel %>% glimpse()
 
 ## população -----
-lista_municipios_pe <- readRDS("data/lista_municipios_pe.rds")
+# Tenta ler a lista de municípios local ou da pasta RDS
+caminho_lista_mun <- if (file.exists(file.path(dir_rds, "lista_municipios_pe.rds"))) {
+  file.path(dir_rds, "lista_municipios_pe.rds")
+} else {
+  "data/lista_municipios_pe.rds"
+}
+
+lista_municipios_pe <- readRDS(caminho_lista_mun)
 
 dados_populacao_mun_pe <- ibge_variables(
   6579, 
@@ -408,7 +421,6 @@ base_painel <- bind_rows(
     ibge6 = substr(as.character(cod_ibge), 1, 6)
   )
 
-# Monta o objeto para API
 df_bimestral <- base_painel[base_painel$periodicidade == "Bimestral", ]
 
 dict_periodos <- lapply(
@@ -416,13 +428,9 @@ dict_periodos <- lapply(
   function(x) sort(unique(na.omit(as.numeric(x))))
 )
 
-#base_painel %>% arrange(desc(exercicio)) %>% View()
-
-base_painel %>% count(exercicio, periodicidade, periodo) %>% print(n=100)
-
+base_painel %>% count(exercicio, periodicidade, periodo) %>% print(n = 100)
 base_painel %>% filter(grupo == 'Despesas') %>% count(indicador)
 
-# Monta o objeto final SEM o dicionário IPCA
 objeto_pronto_api <- list(
   dados = base_painel,
   filtros = list(
@@ -432,20 +440,40 @@ objeto_pronto_api <- list(
   )
 )
 
-# 6. Salvar Arquivos Finais ----
+# 6. Salvar Arquivos Finais em C:/dados/aurora/{rds, csv, json} ----
+cat("\n--- Salvando Arquivos Locais em C:/dados/aurora ---\n")
+
+# RDS
+caminho_rds_painel <- file.path(dir_rds, "base_painel_mun.rds")
+caminho_rds_pop    <- file.path(dir_rds, "populacao_mun.rds")
+saveRDS(objeto_pronto_api, caminho_rds_painel)
+saveRDS(populacao_tratada, caminho_rds_pop)
+
+# CSV
+caminho_csv_painel <- file.path(dir_csv, "base_painel_mun.csv")
+caminho_csv_pop    <- file.path(dir_csv, "populacao_mun.csv")
+write.csv2(base_painel, caminho_csv_painel, row.names = FALSE)
+write.csv2(populacao_tratada, caminho_csv_pop, row.names = FALSE)
+
+# JSON
+caminho_json_painel <- file.path(dir_json, "base_painel_mun.json")
+caminho_json_pop    <- file.path(dir_json, "populacao_mun.json")
+jsonlite::write_json(objeto_pronto_api, caminho_json_painel, pretty = TRUE, auto_unbox = TRUE)
+jsonlite::write_json(populacao_tratada, caminho_json_pop, pretty = TRUE, auto_unbox = TRUE)
+
+# Cópias para pastas de apps legadas (opcional, mantendo compatibilidade)
 saveRDS(populacao_tratada, 'app_aurora_municipios/data/populacao_mun.rds')
-
 saveRDS(objeto_pronto_api, 'app_aurora_municipios/data/base_painel_mun.rds')
-
 write.csv2(base_painel, 'app_aurora_municipios/data/base_painel_mun.csv', row.names = FALSE)
 
 saveRDS(populacao_tratada, 'app_aurora_fiscal/data/populacao_mun.rds')
-
 saveRDS(objeto_pronto_api, 'app_aurora_fiscal/data/base_painel_mun.rds')
-
 write.csv2(base_painel, 'app_aurora_fiscal/data/base_painel_mun.csv', row.names = FALSE)
 
-cat("-> Arquivos locais compilados com sucesso.\n")
+cat("-> Arquivos salvos com sucesso:\n")
+cat("   - RDS :", caminho_rds_painel, "\n")
+cat("   - CSV :", caminho_csv_painel, "\n")
+cat("   - JSON:", caminho_json_painel, "\n")
 
 # 7. Upload para o Google Drive ----
 cat("\n--- Realizando Upload no Google Drive ---\n")

@@ -2,7 +2,7 @@
 # SCRIPT: ETL EXECUÇÃO E ORÇAMENTO - ANOS ANTERIORES + LOCAL IGPE (2026)
 # Objetivo: Consolidar histórico de execução/orçamento com o ano corrente (2026),
 #           aplicar regras de negócio e operações de crédito, exportando para
-#           Parquet (com Snappy) e RDS na estrutura modular do Aurora.
+#           suas respectivas pastas por formato (Parquet e RDS).
 # ==============================================================================
 options(java.parameters = "-Xmx4g")
 
@@ -45,17 +45,32 @@ if (!exists("DIR_ETL"))        DIR_ETL        <- getwd()
 if (!exists("DIR_RAW_AURORA")) DIR_RAW_AURORA <- file.path(DIR_ETL, "data")
 if (!exists("DIR_OUT_AURORA")) DIR_OUT_AURORA <- file.path(DIR_ETL, "data")
 
-# Estruturação modular dos subdiretórios em RAW e OUT
-DIR_EFISCO_RAW  <- file.path(DIR_RAW_AURORA, "efisco/execucao")
-DIR_ANOS        <- file.path(DIR_EFISCO_RAW, "anos_parquet")
-DIR_OUT_ORC     <- file.path(DIR_OUT_AURORA, "orcamento")
-DIR_PARQUET_OUT <- file.path(DIR_OUT_AURORA, "parquet")
+# Estruturação modular por formato
+DIR_PARQUET_OUT       <- file.path(DIR_OUT_AURORA, "parquet")
+DIR_RDS_OUT           <- file.path(DIR_OUT_AURORA, "rds")
+DIR_ORC_PARQUET_OUT   <- file.path(DIR_OUT_AURORA, "orcamento/parquet")
+DIR_ORC_RDS_OUT       <- file.path(DIR_OUT_AURORA, "orcamento/rds")
 
-dir.create(DIR_EFISCO_RAW,  recursive = TRUE, showWarnings = FALSE)
-dir.create(DIR_ANOS,        recursive = TRUE, showWarnings = FALSE)
-dir.create(DIR_OUT_ORC,     recursive = TRUE, showWarnings = FALSE)
-dir.create(DIR_PARQUET_OUT, recursive = TRUE, showWarnings = FALSE)
-dir.create(DIR_OUT_AURORA,  recursive = TRUE, showWarnings = FALSE)
+# Subdiretórios internos do e-Fisco por formato
+DIR_EFISCO_RAW         <- file.path(DIR_RAW_AURORA, "efisco/execucao")
+DIR_EFISCO_PARQUET_RAW <- file.path(DIR_EFISCO_RAW, "parquet")
+DIR_EFISCO_RDS_RAW     <- file.path(DIR_EFISCO_RAW, "rds")
+DIR_ANOS_PARQUET       <- file.path(DIR_EFISCO_PARQUET_RAW, "anos")
+
+# Criação segura de todos os diretórios de saída
+purrr::walk(
+  list(
+    DIR_PARQUET_OUT,
+    DIR_RDS_OUT,
+    DIR_ORC_PARQUET_OUT,
+    DIR_ORC_RDS_OUT,
+    DIR_EFISCO_RAW,
+    DIR_EFISCO_PARQUET_RAW,
+    DIR_EFISCO_RDS_RAW,
+    DIR_ANOS_PARQUET
+  ),
+  ~ dir.create(.x, recursive = TRUE, showWarnings = FALSE)
+)
 
 # Definição de Variáveis Globais e Regras
 vars_indicadores <- c(
@@ -83,16 +98,20 @@ parse_num_safe <- function(x) {
 # ------------------------------------------------------------------------------
 cli::cli_alert_info("Carregando dados do ano corrente ({ano_atual_num}) do Parquet IGPE...")
 
-caminho_ano_atual_igpe <- if (file.exists(file.path(DIR_EFISCO_RAW, glue("execucao_bdpe_{ano_atual_num}_IGPE.parquet")))) {
-  file.path(DIR_EFISCO_RAW, glue("execucao_bdpe_{ano_atual_num}_IGPE.parquet"))
-} else if (file.exists(file.path(DIR_PARQUET_OUT, glue("execucao_bdpe_{ano_atual_num}_IGPE.parquet")))) {
-  file.path(DIR_PARQUET_OUT, glue("execucao_bdpe_{ano_atual_num}_IGPE.parquet"))
-} else if (file.exists(file.path(DIR_OUT_AURORA, glue("execucao_bdpe_{ano_atual_num}_IGPE.parquet")))) {
-  file.path(DIR_OUT_AURORA, glue("execucao_bdpe_{ano_atual_num}_IGPE.parquet"))
-} else if (file.exists(file.path(DIR_OUT_ORC, glue("execucao_bdpe_{ano_atual_num}_IGPE.parquet")))) {
-  file.path(DIR_OUT_ORC, glue("execucao_bdpe_{ano_atual_num}_IGPE.parquet"))
+nome_arquivo_igpe <- glue("execucao_bdpe_{ano_atual_num}_IGPE.parquet")
+
+caminho_ano_atual_igpe <- if (file.exists(file.path(DIR_PARQUET_OUT, nome_arquivo_igpe))) {
+  file.path(DIR_PARQUET_OUT, nome_arquivo_igpe)
+} else if (file.exists(file.path(DIR_EFISCO_PARQUET_RAW, nome_arquivo_igpe))) {
+  file.path(DIR_EFISCO_PARQUET_RAW, nome_arquivo_igpe)
+} else if (file.exists(file.path(DIR_ORC_PARQUET_OUT, nome_arquivo_igpe))) {
+  file.path(DIR_ORC_PARQUET_OUT, nome_arquivo_igpe)
+} else if (file.exists(file.path(DIR_EFISCO_RAW, nome_arquivo_igpe))) {
+  file.path(DIR_EFISCO_RAW, nome_arquivo_igpe)
+} else if (file.exists(file.path(DIR_OUT_AURORA, nome_arquivo_igpe))) {
+  file.path(DIR_OUT_AURORA, nome_arquivo_igpe)
 } else {
-  file.path(DIR_ETL, glue("data/efisco/execucao/execucao_bdpe_{ano_atual_num}_IGPE.parquet"))
+  file.path(DIR_ETL, glue("data/efisco/execucao/parquet/{nome_arquivo_igpe}"))
 }
 
 if (!file.exists(caminho_ano_atual_igpe)) {
@@ -107,8 +126,8 @@ dados_ano_atual <- arrow::read_parquet(caminho_ano_atual_igpe) %>%
   mutate(across(any_of(vars_numericas), parse_num_safe)) %>%
   mutate(across(-any_of(vars_numericas), as.character))
 
-# Atualiza cópia padronizada na pasta de anos históricos particionados
-file_ano_atual <- file.path(DIR_ANOS, glue("execucao_{ano_atual_num}.parquet"))
+# Atualiza cópia padronizada na pasta de parquets anuais históricos
+file_ano_atual <- file.path(DIR_ANOS_PARQUET, glue("execucao_{ano_atual_num}.parquet"))
 arrow::write_parquet(dados_ano_atual, file_ano_atual, compression = "snappy")
 cli::cli_alert_success("Parquet do ano corrente {.val {ano_atual_num}} processado em {.path {file_ano_atual}}.")
 
@@ -125,7 +144,7 @@ for (arq in arquivos_excel_antigos) {
   ano_arq <- as.numeric(str_extract(basename(arq), "\\d{4}"))
   
   if (!is.na(ano_arq) && ano_arq < ano_atual_num) {
-    parquet_destino <- file.path(DIR_ANOS, glue("execucao_{ano_arq}.parquet"))
+    parquet_destino <- file.path(DIR_ANOS_PARQUET, glue("execucao_{ano_arq}.parquet"))
     
     if (!file.exists(parquet_destino)) {
       cli::cli_alert_info("Convertendo Excel legado do ano {.val {ano_arq}} para Parquet...")
@@ -143,7 +162,7 @@ for (arq in arquivos_excel_antigos) {
 # ------------------------------------------------------------------------------
 cli::cli_alert_info("Consolidando dados dos anos anteriores com o ano corrente...")
 
-todos_parquets <- list.files(DIR_ANOS, pattern = "^execucao_\\d{4}\\.parquet$", full.names = TRUE)
+todos_parquets <- list.files(DIR_ANOS_PARQUET, pattern = "^execucao_\\d{4}\\.parquet$", full.names = TRUE)
 
 arquivos_parquets_historicos <- Filter(function(x) {
   ano_f <- as.numeric(str_extract(basename(x), "\\d{4}"))
@@ -166,18 +185,21 @@ cli::cli_alert_success("Bases unificadas ({nrow(execucao_bdpe)} linhas no total)
 # ------------------------------------------------------------------------------
 # 6. REGRAS DE NEGÓCIO E OPERAÇÕES DE CRÉDITO
 # ------------------------------------------------------------------------------
+# Busca priorizando as subpastas específicas de cada formato
 caminho_op_cred <- if (file.exists(file.path(DIR_PARQUET_OUT, "dados_op_cred.parquet"))) {
   file.path(DIR_PARQUET_OUT, "dados_op_cred.parquet")
+} else if (file.exists(file.path(DIR_RDS_OUT, "dados_op_cred.rds"))) {
+  file.path(DIR_RDS_OUT, "dados_op_cred.rds")
+} else if (file.exists(file.path(DIR_RAW_AURORA, "efisco/parquet/dados_op_cred.parquet"))) {
+  file.path(DIR_RAW_AURORA, "efisco/parquet/dados_op_cred.parquet")
+} else if (file.exists(file.path(DIR_RAW_AURORA, "efisco/rds/dados_op_cred.rds"))) {
+  file.path(DIR_RAW_AURORA, "efisco/rds/dados_op_cred.rds")
 } else if (file.exists(file.path(DIR_OUT_AURORA, "dados_op_cred.parquet"))) {
   file.path(DIR_OUT_AURORA, "dados_op_cred.parquet")
-} else if (file.exists(file.path(DIR_RAW_AURORA, "efisco/dados_op_cred.parquet"))) {
-  file.path(DIR_RAW_AURORA, "efisco/dados_op_cred.parquet")
-} else if (file.exists(file.path(DIR_RAW_AURORA, "efisco/dados_op_cred.rds"))) {
-  file.path(DIR_RAW_AURORA, "efisco/dados_op_cred.rds")
 } else if (file.exists(file.path(DIR_OUT_AURORA, "dados_op_cred.rds"))) {
   file.path(DIR_OUT_AURORA, "dados_op_cred.rds")
 } else {
-  file.path(DIR_RAW_AURORA, "dados_op_cred.rds")
+  file.path(DIR_RAW_AURORA, "efisco/dados_op_cred.rds")
 }
 
 if (!file.exists(caminho_op_cred)) {
@@ -218,25 +240,38 @@ orcamento_bdpe_vf <- execucao_bdpe_2 %>%
   filter(soma_alvo != 0)
 
 # ------------------------------------------------------------------------------
-# 7. EXPORTAÇÃO DOS ARQUIVOS FINAIS (PARQUET & RDS)
+# 7. EXPORTAÇÃO DOS ARQUIVOS FINAIS SEGREGADOS POR FORMATO
 # ------------------------------------------------------------------------------
-# 7.1 Cópia consolidada bruta para a pasta raw (ajuste de mês 99 -> 1)
-execucao_bdpe_2 %>% 
-  mutate(mes = ifelse(mes == 99, 1, mes)) %>% 
-  arrow::write_parquet(file.path(DIR_EFISCO_RAW, "execucao_bdpe.parquet"), compression = "snappy")
 
-# 7.2 Exportações em Parquet (Raiz, subpasta parquet/ e subpasta orcamento/)
-arrow::write_parquet(execucao_bdpe_vf,  file.path(DIR_OUT_AURORA, "execucao_bdpe.parquet"), compression = "snappy")
-arrow::write_parquet(orcamento_bdpe_vf, file.path(DIR_OUT_AURORA, "orcamento_bdpe.parquet"), compression = "snappy")
+# 7.1 Cópia intermediária bruta para o e-Fisco (com ajuste de mês 99 -> 1)
+execucao_bdpe_raw <- execucao_bdpe_2 %>% 
+  mutate(mes = ifelse(mes == 99, 1, mes))
 
+arrow::write_parquet(
+  execucao_bdpe_raw, 
+  file.path(DIR_EFISCO_PARQUET_RAW, "execucao_bdpe.parquet"), 
+  compression = "snappy"
+)
+readr::write_rds(
+  execucao_bdpe_raw, 
+  file.path(DIR_EFISCO_RDS_RAW, "execucao_bdpe.rds")
+)
+
+# 7.2 Exportações em Parquet nas subpastas dedicadas (DIR_OUT_AURORA/parquet e /orcamento/parquet)
 arrow::write_parquet(execucao_bdpe_vf,  file.path(DIR_PARQUET_OUT, "execucao_bdpe.parquet"), compression = "snappy")
 arrow::write_parquet(orcamento_bdpe_vf, file.path(DIR_PARQUET_OUT, "orcamento_bdpe.parquet"), compression = "snappy")
 
-arrow::write_parquet(execucao_bdpe_vf,  file.path(DIR_OUT_ORC, "execucao_bdpe.parquet"), compression = "snappy")
-arrow::write_parquet(orcamento_bdpe_vf, file.path(DIR_OUT_ORC, "orcamento_bdpe.parquet"), compression = "snappy")
+arrow::write_parquet(execucao_bdpe_vf,  file.path(DIR_ORC_PARQUET_OUT, "execucao_bdpe.parquet"), compression = "snappy")
+arrow::write_parquet(orcamento_bdpe_vf, file.path(DIR_ORC_PARQUET_OUT, "orcamento_bdpe.parquet"), compression = "snappy")
 
-# 7.3 Backups em RDS para ferramentas legadas
-readr::write_rds(execucao_bdpe_vf,  file.path(DIR_OUT_AURORA, "execucao_bdpe.rds"))
-readr::write_rds(orcamento_bdpe_vf, file.path(DIR_OUT_AURORA, "orcamento_bdpe.rds"))
+# 7.3 Exportações em RDS nas subpastas dedicadas (DIR_OUT_AURORA/rds e /orcamento/rds)
+readr::write_rds(execucao_bdpe_vf,  file.path(DIR_RDS_OUT, "execucao_bdpe.rds"))
+readr::write_rds(orcamento_bdpe_vf, file.path(DIR_RDS_OUT, "orcamento_bdpe.rds"))
 
-cli::cli_alert_success("Bases de Execução e Orçamento consolidadas salvas em Parquet e RDS em {.path {DIR_OUT_AURORA}}!")
+readr::write_rds(execucao_bdpe_vf,  file.path(DIR_ORC_RDS_OUT, "execucao_bdpe.rds"))
+readr::write_rds(orcamento_bdpe_vf, file.path(DIR_ORC_RDS_OUT, "orcamento_bdpe.rds"))
+
+cli::cli_alert_success("Bases consolidadas salvas com sucesso em suas respectivas pastas:")
+cli::cli_alert_info("Parquet: {.path {DIR_PARQUET_OUT}} e {.path {DIR_ORC_PARQUET_OUT}}")
+cli::cli_alert_info("RDS:     {.path {DIR_RDS_OUT}} e {.path {DIR_ORC_RDS_OUT}}")
+cli::cli_alert_info("e-Fisco: {.path {DIR_EFISCO_PARQUET_RAW}} e {.path {DIR_EFISCO_RDS_RAW}}")

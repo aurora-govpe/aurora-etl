@@ -1,7 +1,8 @@
 # ==============================================================================
 # SCRIPT: ETL EXECUÇÃO ORÇAMENTÁRIA (E-FISCO / DUCKDB S3 -> AURORA)
 # Objetivo: Conectar ao MinIO/S3 via DuckDB, extrair despesas de 2026, aplicar
-#           regras de negócio orçamentárias e exportar Parquets para as aplicações.
+#           regras de negócio orçamentárias e exportar arquivos particionados
+#           por formato (Parquet e RDS) para as aplicações.
 # ==============================================================================
 
 # ------------------------------------------------------------------------------
@@ -17,6 +18,7 @@ library(arrow)
 library(tidyr)
 library(cli)
 library(lubridate)
+library(purrr)
 
 # Opção para formatação de números decimais
 options(scipen = 999, digits = 2)
@@ -40,6 +42,31 @@ if (file.exists("R/paths.R")) {
 if (!exists("DIR_ETL"))        DIR_ETL        <- getwd()
 if (!exists("DIR_RAW_AURORA")) DIR_RAW_AURORA <- file.path(DIR_ETL, "data")
 if (!exists("DIR_OUT_AURORA")) DIR_OUT_AURORA <- file.path(DIR_ETL, "data")
+
+# Estrutura modular segregada por formato de arquivo
+dir_parquet_out     <- file.path(DIR_OUT_AURORA, "parquet")
+dir_rds_out         <- file.path(DIR_OUT_AURORA, "rds")
+
+# Subpastas de orçamento segregadas por formato
+dir_orcamento_parquet <- file.path(DIR_OUT_AURORA, "orcamento/parquet")
+dir_orcamento_rds     <- file.path(DIR_OUT_AURORA, "orcamento/rds")
+
+# Estrutura intermediária e backup efisco por formato
+dir_raw_execucao_parquet <- file.path(DIR_RAW_AURORA, "efisco/execucao/parquet")
+dir_raw_execucao_rds     <- file.path(DIR_RAW_AURORA, "efisco/execucao/rds")
+
+# Criação segura de todos os diretórios necessários
+walk(
+  list(
+    dir_parquet_out,
+    dir_rds_out,
+    dir_orcamento_parquet,
+    dir_orcamento_rds,
+    dir_raw_execucao_parquet,
+    dir_raw_execucao_rds
+  ),
+  ~ dir.create(.x, recursive = TRUE, showWarnings = FALSE)
+)
 
 # Busca dinâmica do arquivo .env com credenciais S3
 env_path <- if (file.exists(".env")) {
@@ -101,7 +128,7 @@ vars_indicadores <- c(
   "empenhado", "liquidado", "liquidado_compet", "pago", "pago_rp"
 )
 vars_numericas <- c("ano", "mes", vars_indicadores)
-vars_orcamento  <- c("dotacao_inicial", "dotacao_autorizada", "prog_financeira", "empenhado")
+vars_orcamento <- c("dotacao_inicial", "dotacao_autorizada", "prog_financeira", "empenhado")
 
 # Helper para conversão numérica segura
 parse_num_safe <- function(x) {
@@ -140,12 +167,17 @@ execucao_2026 <- df %>%
 # ------------------------------------------------------------------------------
 # 6. CARGA DOS DADOS DE OPERAÇÃO DE CRÉDITO
 # ------------------------------------------------------------------------------
-caminho_op_cred <- if (file.exists(file.path(DIR_OUT_AURORA, "parquet/dados_op_cred.parquet"))) {
-  file.path(DIR_OUT_AURORA, "parquet/dados_op_cred.parquet")
+# Busca priorizando os novos subdiretórios segregados por formato
+caminho_op_cred <- if (file.exists(file.path(dir_parquet_out, "dados_op_cred.parquet"))) {
+  file.path(dir_parquet_out, "dados_op_cred.parquet")
+} else if (file.exists(file.path(dir_rds_out, "dados_op_cred.rds"))) {
+  file.path(dir_rds_out, "dados_op_cred.rds")
+} else if (file.exists(file.path(DIR_RAW_AURORA, "efisco/parquet/dados_op_cred.parquet"))) {
+  file.path(DIR_RAW_AURORA, "efisco/parquet/dados_op_cred.parquet")
+} else if (file.exists(file.path(DIR_RAW_AURORA, "efisco/rds/dados_op_cred.rds"))) {
+  file.path(DIR_RAW_AURORA, "efisco/rds/dados_op_cred.rds")
 } else if (file.exists(file.path(DIR_OUT_AURORA, "dados_op_cred.parquet"))) {
   file.path(DIR_OUT_AURORA, "dados_op_cred.parquet")
-} else if (file.exists(file.path(DIR_RAW_AURORA, "efisco/dados_op_cred.rds"))) {
-  file.path(DIR_RAW_AURORA, "efisco/dados_op_cred.rds")
 } else if (file.exists(file.path(DIR_OUT_AURORA, "dados_op_cred.rds"))) {
   file.path(DIR_OUT_AURORA, "dados_op_cred.rds")
 } else {
@@ -194,37 +226,64 @@ orcamento_bdpe_vf <- execucao_bdpe_2 %>%
   filter(soma_alvo != 0)
 
 # ------------------------------------------------------------------------------
-# 8. EXPORTAÇÃO DOS ARQUIVOS (PARQUET & RDS)
+# 8. EXPORTAÇÃO DOS ARQUIVOS ESTRUTURADOS POR FORMATO
 # ------------------------------------------------------------------------------
-# Diretórios estruturados
-dir_parquet_out   <- file.path(DIR_OUT_AURORA, "parquet")
-dir_out_orcamento <- file.path(DIR_OUT_AURORA, "orcamento")
-dir_raw_execucao  <- file.path(DIR_RAW_AURORA, "efisco/execucao")
 
-dir.create(DIR_OUT_AURORA, recursive = TRUE, showWarnings = FALSE)
-dir.create(dir_parquet_out, recursive = TRUE, showWarnings = FALSE)
-dir.create(dir_out_orcamento, recursive = TRUE, showWarnings = FALSE)
-dir.create(dir_raw_execucao, recursive = TRUE, showWarnings = FALSE)
+# 8.1 Base intermediária / backup efisco (em suas respectivas pastas)
+execucao_bdpe_raw <- execucao_bdpe_2 %>% mutate(mes = ifelse(mes == 99, 1, mes))
 
-# 8.1 Base consolidada para repositório raw/efisco
-caminho_parquet_raw <- file.path(dir_raw_execucao, "execucao_bdpe_2026_IGPE.parquet")
-execucao_bdpe_2 %>% 
-  mutate(mes = ifelse(mes == 99, 1, mes)) %>% 
-  arrow::write_parquet(caminho_parquet_raw, compression = "snappy")
+arrow::write_parquet(
+  execucao_bdpe_raw, 
+  file.path(dir_raw_execucao_parquet, "execucao_bdpe_2026_IGPE.parquet"), 
+  compression = "snappy"
+)
+readr::write_rds(
+  execucao_bdpe_raw, 
+  file.path(dir_raw_execucao_rds, "execucao_bdpe_2026_IGPE.rds")
+)
 
-# 8.2 Exportação Parquet principal em DIR_OUT_AURORA e /parquet
-arrow::write_parquet(execucao_bdpe_vf, file.path(DIR_OUT_AURORA, "execucao_bdpe_2026_IGPE.parquet"), compression = "snappy")
-arrow::write_parquet(orcamento_bdpe_vf, file.path(DIR_OUT_AURORA, "orcamento_bdpe_2026_IGPE.parquet"), compression = "snappy")
+# 8.2 Exportação Parquet principal (DIR_OUT_AURORA/parquet e DIR_OUT_AURORA/orcamento/parquet)
+arrow::write_parquet(
+  execucao_bdpe_vf, 
+  file.path(dir_parquet_out, "execucao_bdpe_2026_IGPE.parquet"), 
+  compression = "snappy"
+)
+arrow::write_parquet(
+  orcamento_bdpe_vf, 
+  file.path(dir_parquet_out, "orcamento_bdpe_2026_IGPE.parquet"), 
+  compression = "snappy"
+)
 
-arrow::write_parquet(execucao_bdpe_vf, file.path(dir_parquet_out, "execucao_bdpe_2026_IGPE.parquet"), compression = "snappy")
-arrow::write_parquet(orcamento_bdpe_vf, file.path(dir_parquet_out, "orcamento_bdpe_2026_IGPE.parquet"), compression = "snappy")
+arrow::write_parquet(
+  execucao_bdpe_vf, 
+  file.path(dir_orcamento_parquet, "execucao_bdpe_2026_IGPE.parquet"), 
+  compression = "snappy"
+)
+arrow::write_parquet(
+  orcamento_bdpe_vf, 
+  file.path(dir_orcamento_parquet, "orcamento_bdpe_2026_IGPE.parquet"), 
+  compression = "snappy"
+)
 
-# 8.3 Cópia no subdiretório orcamento/
-arrow::write_parquet(execucao_bdpe_vf, file.path(dir_out_orcamento, "execucao_bdpe_2026_IGPE.parquet"), compression = "snappy")
-arrow::write_parquet(orcamento_bdpe_vf, file.path(dir_out_orcamento, "orcamento_bdpe_2026_IGPE.parquet"), compression = "snappy")
+# 8.3 Exportação RDS principal (DIR_OUT_AURORA/rds e DIR_OUT_AURORA/orcamento/rds)
+readr::write_rds(
+  execucao_bdpe_vf, 
+  file.path(dir_rds_out, "execucao_bdpe_2026_IGPE.rds")
+)
+readr::write_rds(
+  orcamento_bdpe_vf, 
+  file.path(dir_rds_out, "orcamento_bdpe_2026_IGPE.rds")
+)
 
-# 8.4 Backup em RDS para aplicações legadas
-readr::write_rds(execucao_bdpe_vf, file.path(DIR_OUT_AURORA, "execucao_bdpe_2026_IGPE.rds"))
-readr::write_rds(orcamento_bdpe_vf, file.path(DIR_OUT_AURORA, "orcamento_bdpe_2026_IGPE.rds"))
+readr::write_rds(
+  execucao_bdpe_vf, 
+  file.path(dir_orcamento_rds, "execucao_bdpe_2026_IGPE.rds")
+)
+readr::write_rds(
+  orcamento_bdpe_vf, 
+  file.path(dir_orcamento_rds, "orcamento_bdpe_2026_IGPE.rds")
+)
 
-cli_alert_success("ETL e exportação dos Parquets executados com sucesso em {.path {DIR_OUT_AURORA}}!")
+cli_alert_success("ETL e exportação por formato concluídos com sucesso!")
+cli_alert_info("Arquivos Parquet gravados em: {.path {dir_parquet_out}} e {.path {dir_orcamento_parquet}}")
+cli_alert_info("Arquivos RDS gravados em:     {.path {dir_rds_out}} e {.path {dir_orcamento_rds}}")
