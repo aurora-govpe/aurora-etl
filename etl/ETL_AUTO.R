@@ -60,13 +60,30 @@ scripts <- c(
 )
 
 
-# Executa cada script em ordem
-for (script in scripts) {
-  caminho <- file.path(pasta_scripts, script)
-  cat(glue::glue("\n\n🔧 Executando {script}...\n\n"))
-  source(caminho, local = TRUE)
-}
+# Executa cada script em ordem, com log local (logs/etl_AAAA-MM-DD.log)
+# Por padrao, para no primeiro erro (como antes). Para seguir mesmo com falhas:
+#   Sys.setenv(AURORA_ETL_CONTINUE_ON_ERROR = "true")
+if (file.exists("R/logger.R")) source("R/logger.R") else if (file.exists("../R/logger.R")) source("../R/logger.R")
+continuar_no_erro <- tolower(Sys.getenv("AURORA_ETL_CONTINUE_ON_ERROR", "false")) == "true"
+falhas <- character(0)
+
+log_capture_start()  # grava no log tudo o que os scripts imprimem (cat/print/message)
+log_info("===== INICIO DA EXECUCAO ETL (", length(scripts), " scripts) =====")
+
+tryCatch({
+  for (script in scripts) {
+    caminho <- file.path(pasta_scripts, script)
+    ok <- log_step(script, source(caminho, local = TRUE), stop_on_error = !continuar_no_erro)
+    if (!ok) falhas <- c(falhas, script)
+  }
+}, finally = log_capture_stop())
 
 tictoc::toc()
 
-cat("✅ Todos os scripts foram executados com sucesso.\n")
+if (length(falhas) == 0) {
+  log_info("===== FIM: todos os scripts executados com sucesso =====")
+  cat("✅ Todos os scripts foram executados com sucesso.\n")
+} else {
+  log_error("===== FIM com ", length(falhas), " falha(s): ", paste(falhas, collapse = ", "), " =====")
+  cat("⚠️ Execucao concluida com falhas. Veja o log em logs/.\n")
+}
