@@ -4,6 +4,8 @@ Arquivo de contexto das alterações feitas com o Claude neste repositório. Atu
 
 ## Regras combinadas com a usuária
 - **Antes de qualquer `git push`**: rodar `git fetch` e comparar com `origin/main` (`git status -sb`, `git log HEAD..origin/main`). Se a nuvem mudou, fazer pull/merge primeiro e avisar.
+- **Nunca push direto na `main`** (instrução do Hugo, 2026-11-09): o trabalho vai numa branch e o **Hugo abre a Pull Request**. A conta da usuária só tem leitura no repositório (push retorna 403).
+- Antes de qualquer indicador novo ir adiante: testar se ele aparece na **base final** (`df_indicadores.parquet`).
 - Não commitar nem dar push sem pedido explícito.
 - Manter este arquivo atualizado.
 
@@ -62,7 +64,10 @@ Arquivo de contexto das alterações feitas com o Claude neste repositório. Atu
 - `C:\dados\dados\dados brutos\aurora\indicadores\lista de indicadores.xlsx` (aba Sheet1): adicionadas 2 linhas — `peso_abaixo_5_10_pct` (percentual) e `peso_abaixo_5_10_abs` (absoluto), grupo saúde, polaridade negativa. Backup idêntico ao original na mesma pasta: `lista de indicadores.BACKUP_2026-11-09.xlsx`. Demais abas conferidas e intactas.
 - `etl/municipios/etl_caracter_mun.R`: novo bloco "9.1" (`df_peso_ideal_long`), incluído no `bind_rows` final, e exceção na regra de conversão 0-1 → % para `peso_abaixo_5_10_pct`.
 - Testado só o bloco novo + join com a lista + regra (script completo não roda aqui: baixa dados do Google Drive com credencial): 185 municípios, 2008-2025, 3.252 valores de % e 3.330 absolutos, 0 sem match na lista, 0 valores alterados pela regra, conferido Abreu e Lima 2025 (2,16% / 55).
-- NÃO feito: execução completa do `etl_caracter_mun.R`, commit e push.
+- Teste na base final (2026-11-09): `etl_caracter_mun.R` completo rodou OK em ~74 s (via `log_step`, log em `logs/`). Em `C:/dados/aurora/parquet/df_indicadores.parquet`: `peso_abaixo_5_10_pct` (3.252 linhas) e `peso_abaixo_5_10_abs` (3.330), 185 municípios, 2008-2025, grupo/tipo/polaridade preenchidos, `rank_pe` e `ibge6` calculados, 0 divergências contra a planilha, 129 valores entre 0 e 1 preservados (sem ×100).
+- **Achado:** `etl_caracter_mun.R` regera `df_indicadores.parquet` do zero e **apaga os 6 indicadores INFOCOM** (`emp_infocom`, `estab_infocom`, `pct_emp_infocom_serv`, `pct_estab_infocom_serv`, `pct_vab_infocom_serv`, `ql_infocom_serv`; 4.440 linhas). Eles são acrescentados depois por `etl/municipios/etl_infocom_servicos.R`, que **não está no `ETL_AUTO.R`** e usa caminho fixo `C:/Users/hugo.vasconcelos/...` (não roda em outras máquinas). Não é causado por este indicador; avisar o Hugo. Localmente as linhas foram restauradas a partir do backup.
+- Backup dos parquet/rds anteriores à execução: `C:\Users\kattinecosta\Documents\backup_etl_2026-11-09\`.
+- Push direto: bloqueado (403). Caminho: branch `feat/indicador-peso-ideal` + patches para o Hugo abrir a PR.
 
 ## Pendências / perguntas em aberto
 - Detalhes da planilha e do indicador (ver acima).
