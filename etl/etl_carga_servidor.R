@@ -17,7 +17,8 @@ dir_remoto_parquet <- "/srv/dados/aurora/parquet"
 # Lista de arquivos
 arquivos <- c(
   # Aurora Fiscal
-  "json"
+  "json",
+  "geojson"
 )
 
 ## PARQUET -------------------------------------------------------------------
@@ -36,7 +37,18 @@ arquivos_parquet <- c(
 "parquet/dim_fornecedor.parquet",
 "parquet/dim_fonte.parquet",
 "parquet/dim_contrato.parquet",
-"parquet/dim_despesa_gerencial.parquet"
+"parquet/dim_despesa_gerencial.parquet",
+
+# Aurora Iniciativas 
+
+"parquet/df_iniciativas.parquet",
+"parquet/df_cozinhas.parquet",
+"parquet/dados_pac.parquet",
+"parquet/dados_emendas.parquet",
+"parquet/df_pcp.parquet",
+"parquet/ficha_municipal.parquet"
+
+## Aurora Municípios - Programa 
 
 )
 

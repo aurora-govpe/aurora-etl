@@ -1,8 +1,9 @@
-﻿library(DBI)
+library(DBI)
 library(RSQLite)
 library(dplyr)
 library(purrr)
 library(lubridate)
+library(arrow) # Biblioteca para manipulação de arquivos Parquet
 
 # 1. Validação do Sistema Operacional e Definição dos Caminhos
 is_linux <- Sys.info()[["sysname"]] == "Linux"
@@ -11,10 +12,15 @@ if (is_linux) {
   Sys.setlocale(locale = "pt_BR.utf8")
   
   path_db <- "/srv/dados/convenios_receitas/db.sqlite3"
-  dir_saida_novo <- "/srv/dados/aurora"
+  dir_saida_parquet <- "/srv/dados/aurora/parquet"
 } else {
   path_db <- "data/db.sqlite3"
-  dir_saida_novo <- "app_aurora_novo/data"
+  dir_saida_parquet <- "app_aurora_novo/data/parquet"
+}
+
+# Garante que o diretório de destino exista
+if (!dir.exists(dir_saida_parquet)) {
+  dir.create(dir_saida_parquet, recursive = TRUE)
 }
 
 # 2. Conexão com o banco de dados SQLite
@@ -122,6 +128,9 @@ df_convenios_receita <- df_convenios_raw %>%
     )
   )
 
-# 5. Salvando os arquivos nos caminhos definidos
-df_convenios_receita %>% 
-  readr::write_rds(file.path(dir_saida_novo, "df_convenios_receita.rds"))
+# 5. Salvando o arquivo no formato Parquet
+arrow::write_parquet(
+  x = df_convenios_receita,
+  sink = file.path(dir_saida_parquet, "df_convenios_receita.parquet"),
+  compression = "snappy"
+)

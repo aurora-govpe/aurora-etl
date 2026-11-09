@@ -111,7 +111,7 @@ dbDisconnect(con)
 # Grava/Atualiza o Parquet parcial do ano corrente na pasta de parquets anuais
 file_ano_atual <- file.path(DIR_ANOS_PARQUET, glue("execucao_{ano_atual_num}.parquet"))
 write_parquet(dados_ano_atual, file_ano_atual)
-cli::cli_alert_success(glue("Parquet do ano {ano_atual_num} gravado em {.path {file_ano_atual}}"))
+# cli::cli_alert_success(glue("Parquet do ano {ano_atual_num} gravado em {.path {file_ano_atual}}"))
 
 # 5. Carga/Conversão Inicial dos Anos Históricos (Excels antigos) ----
 arquivos_excel_antigos <- list.files(DIR_EXCEL_LEGADO, pattern = "^Execucao_Despesa_para_SEPE_\\d{4}\\.xlsx$", full.names = TRUE)

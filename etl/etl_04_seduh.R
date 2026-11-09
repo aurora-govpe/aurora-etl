@@ -5,6 +5,27 @@
 # ==============================================================================
 
 # ------------------------------------------------------------------------------
+# 0. FUNÇÃO DE NORMALIZAÇÃO DE NOMES DE MUNICÍPIO
+# ------------------------------------------------------------------------------
+padronizar_municipio <- function(x) {
+  x %>%
+    as.character() %>%
+    str_replace_all("(?i)\\s*-\\s*PE$", "") %>% # Remove ' - PE' ou '-PE'
+    stri_trans_general("Latin-ASCII") %>%      # Remove acentuações (Água Preta -> Agua Preta)
+    str_squish() %>%                           # Remove múltiplos espaços em branco
+    toupper()                                  # Padroniza em maiúsculas
+}
+
+# ------------------------------------------------------------------------------
+# 1. PREPARAÇÃO DO DICIONÁRIO DE-PARA (IBGE7)
+# ------------------------------------------------------------------------------
+de_para_ibge <- ficha_municipal %>%
+  select(ibge7, municipio) %>%
+  distinct(ibge7, .keep_all = TRUE) %>%
+  mutate(municipio_norm = padronizar_municipio(municipio)) %>%
+  select(ibge7, municipio_norm)
+
+# ------------------------------------------------------------------------------
 # 1. CEHAB (COMPANHIA ESTADUAL DE HABITAÇÃO E OBRAS)
 # ------------------------------------------------------------------------------
 url_dados_cehab <- "https://docs.google.com/spreadsheets/d/1iE3Sl2CTIDH2cbEp4fI4Tqk-dS92pze83RgTmNC5NRI/edit?gid=1983646507#gid=1983646507"
@@ -43,6 +64,34 @@ df_cehab <- df_cehab_raw %>%
     valor_total      = as.character(valor_total)
   ) %>%
   select(-secretaria_unidade_orig)
+
+df_cehab_final <- df_cehab %>%
+  mutate(municipio = case_when(
+    municipio == "ITAMARACÁ" ~ "ILHA DE ITAMARACÁ",
+    municipio == "BELÉM DE SÃO FRANCISCO"  ~ "BELÉM DO SÃO FRANCISCO",
+    municipio == "SÃO CAETANO"  ~ "SÃO CAITANO",
+    TRUE ~ municipio
+  )) %>%
+  mutate(municipio_norm = padronizar_municipio(municipio)) %>%
+  left_join(de_para_ibge, by = "municipio_norm") %>%
+  select(ibge7, everything(), -municipio_norm)
+
+df_cehab_final %>% filter(is.na(ibge7) & !is.na(municipio)) %>% distinct(municipio)
+
+# Exportação Parquet
+arrow::write_parquet(
+  x = df_cehab_final,
+  sink = file.path(DIR_EXPORT_PARQUET, "df_obras.parquet")
+)
+
+# Exportação JSON
+jsonlite::write_json(
+  x = df_cehab_final,
+  path = file.path(DIR_EXPORT_JSON, "df_obras.json"),
+  pretty = TRUE,
+  auto_unbox = TRUE,
+  na = "null"
+)
 
 cli_alert_success("Bases da CEHAB processadas ({nrow(df_cehab)} registros).")
 
@@ -106,6 +155,36 @@ seduh_df_multi <- readxl::read_excel(seduh_file_source, col_types = "text") %>%
     )
   )
 
+df_ilumina_final <- seduh_df_multi %>%
+  mutate(municipio = case_when(
+    municipio == "SÃO CAETANO" ~ "SÃO CAITANO",
+    TRUE ~ municipio
+  )) %>%
+  mutate(municipio_norm = padronizar_municipio(municipio)) %>%
+  left_join(de_para_ibge, by = "municipio_norm") %>%
+  select(ibge7, everything(), -municipio_norm) %>%
+  filter(iniciativa_estrategica == "ILUMINA PERNAMBUCO") 
+
+
+df_ilumina_final %>% filter(is.na(ibge7) & !is.na(municipio)) %>% distinct(municipio)
+
+# Exportação Parquet
+arrow::write_parquet(
+  x = df_ilumina_final,
+  sink = file.path(DIR_EXPORT_PARQUET, "df_iluminacao.parquet")
+)
+
+# Exportação JSON
+jsonlite::write_json(
+  x = df_ilumina_final,
+  path = file.path(DIR_EXPORT_JSON, "df_iluminacao.json"),
+  pretty = TRUE,
+  auto_unbox = TRUE,
+  na = "null"
+)
+
+df_ilumina_final %>% View()
+
 cli_alert_success("Bases da SEDU processadas ({nrow(seduh_df_multi)} registros).")
 
 
@@ -141,29 +220,41 @@ perpart_df_multi <- read_sheet(ss = url_dados_perpart, sheet = "BASE ANA_NT") %>
     executor               = NA_character_
   )
 
-# Base tabular principal sem geometria
-perpart_df_multi %>% arrow::write_parquet(file.path(DIR_EXPORT_PARQUET, "df_regularizacoes.parquet"))
+# # Base tabular principal sem geometria
+# perpart_df_multi %>% arrow::write_parquet(file.path(DIR_EXPORT_PARQUET, "df_regularizacoes.parquet"))
+# 
+# # Exportação de df_iniciativas em formato JSON
+# jsonlite::write_json(
+#   x = perpart_df_multi,
+#   path = file.path(DIR_EXPORT_JSON, "df_regularizacoes.json"),
+#   pretty = TRUE,
+#   auto_unbox = TRUE,
+#   na = "null"
+# )
 
-# Exportação de df_iniciativas em formato JSON
+df_regularizacoes_final <- perpart_df_multi %>%
+  mutate(municipio_norm = padronizar_municipio(municipio)) %>%
+  left_join(de_para_ibge, by = "municipio_norm") %>%
+  select(ibge7, everything(), -municipio_norm)
+
+# Exportação Parquet
+arrow::write_parquet(
+  x = df_regularizacoes_final,
+  sink = file.path(DIR_EXPORT_PARQUET, "df_regularizacoes.parquet")
+)
+
+# Exportação JSON
 jsonlite::write_json(
-  x = perpart_df_multi,
-  path = file.path(DIR_OUT_AURORA, "df_regularizacoes.json"),
+  x = df_regularizacoes_final,
+  path = file.path(DIR_EXPORT_JSON, "df_regularizacoes.json"),
   pretty = TRUE,
   auto_unbox = TRUE,
   na = "null"
 )
 
-cli_alert_success("Bases da PERPART processadas ({nrow(perpart_df_multi)} registros).")
-
-perpart_df_multi %>% 
-  mutate(indicador_nome = toupper(indicador_nome)) %>% 
-  filter(
-    str_detect(indicador_nome, "REGULARIZA"),
-    status == "Concluída"
-  ) %>% 
-  mutate(indicador = as.numeric(indicador)) %>% 
-  summarise(total = sum(indicador))
-
+cli_alert_success(
+  "df_regularizacoes exportado com ibge7 ({sum(!is.na(df_regularizacoes_final$ibge7))}/{nrow(df_regularizacoes_final)} casados)."
+)
 
 # ------------------------------------------------------------------------------
 # 4. SEDUH / SEHAB (SECRETARIA EXECUTIVA DE HABITAÇÃO)
@@ -220,10 +311,36 @@ seduh_sehab_df_multi %>% arrow::write_parquet(file.path(DIR_EXPORT_PARQUET, "df_
 # Exportação de df_iniciativas em formato JSON
 jsonlite::write_json(
   x = seduh_sehab_df_multi,
-  path = file.path(DIR_OUT_AURORA, "df_habitacao.json"),
+  path = file.path(DIR_EXPORT_JSON, "df_habitacao.json"),
   pretty = TRUE,
   auto_unbox = TRUE,
   na = "null"
 )
 
-cli_alert_success("Base geral da SEHAB processada ({nrow(seduh_sehab_df_multi)} registros).")
+# df_habitacao_final <- seduh_sehab_df_multi %>%
+#   mutate(municipio_norm = padronizar_municipio(municipio)) %>%
+#   left_join(de_para_ibge, by = "municipio_norm") %>%
+#   select(ibge7, everything(), -municipio_norm)
+# 
+# # Exportação Parquet
+# arrow::write_parquet(
+#   x = df_habitacao_final,
+#   sink = file.path(DIR_EXPORT_PARQUET, "df_habitacao.parquet")
+# )
+# 
+# # Exportação JSON
+# jsonlite::write_json(
+#   x = df_habitacao_final,
+#   path = file.path(DIR_EXPORT_JSON, "df_habitacao.json"),
+#   pretty = TRUE,
+#   auto_unbox = TRUE,
+#   na = "null"
+# )
+
+cli_alert_success(
+  "df_habitacao exportado com ibge7 ({sum(!is.na(df_habitacao_final$ibge7))}/{nrow(df_habitacao_final)} casados)."
+)
+
+
+df_regularizacoes_final %>% filter(is.na(ibge7) & !is.na(municipio)) %>% distinct(municipio)
+seduh_sehab_df_multi %>% filter(is.na(ibge7) & !is.na(municipio)) %>% distinct(municipio)

@@ -10,6 +10,8 @@ pasta_scripts <- if (dir.exists("etl")) "etl" else "."
 
 # Lista os scripts que você quer executar
 scripts <- c(
+  'municipios/etl_ficha_municipal.R',
+  
   'etl_00_iniciativas_global.R',
   'etl_01_iniciativas_compesa.R',
   'etl_02_iniciativas_secult_see.R',
@@ -29,14 +31,15 @@ scripts <- c(
   'fiscal/etl_execucao_bdpe_IGPE.R',
   # 'etl_cozinhas.R', # nao ta puxando os dados
   'etl_PCP.R',
-  'municipios/etl_ficha_municipal.R',
   'municipios/etl_indicadores_ufs.R', ## falta dados brutos
   'municipios/etl_indicadores_regioes_br.R' ## falta dados brutos
+  
+  #'fiscal/etl_transferencias_voluntarias.R' ## Roda no servidor
   
   
   ### CONFERIR ANTES DE RODAS ---------------
   # 'etl_carga_servidor.R'
-  ## ---------------------------------------
+  ## ----------------------------------------
   
   ### ROTINAS SEMANAIS ----------------------
   #, 'R/gerador_pdfs.R', # uma vez na semana

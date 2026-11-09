@@ -642,7 +642,7 @@ shared_iniciativas %>%
 
 # Localização do config: busca em 'data/' ou na raiz como fallback
 config_yml_path  <- file.path(DIR_EXPORT_DATA, "config.yml")
-config_json_path <- file.path(DIR_EXPORT_DATA, "config.json")
+config_json_path <- file.path(DIR_EXPORT_JSON, "config.json")
 
 # Se não estiver em data/, mas existir na raiz, copia para data/
 if (!file.exists(config_yml_path) && file.exists("config.yml")) {
