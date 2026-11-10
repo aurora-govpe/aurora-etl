@@ -39,6 +39,12 @@ if (file.exists("R/paths.R")) {
   source("etl/paths.R")
 }
 
+if (file.exists("R/obitos_maternos.R")) {
+  source("R/obitos_maternos.R")
+} else if (file.exists("../R/obitos_maternos.R")) {
+  source("../R/obitos_maternos.R")
+}
+
 # Fallbacks defensivos para execuções avulsas
 if (!exists("DIR_ETL"))        DIR_ETL        <- getwd()
 if (!exists("DIR_RAW_AURORA")) DIR_RAW_AURORA <- file.path(DIR_ETL, "data")
@@ -417,6 +423,52 @@ df_saude_long <- readxl::read_excel(caminho_temp_saude) %>%
   )
 cli_alert_success("Saúde processada.")
 
+## 5.8.1 Crianças de 5 a 10 anos abaixo do peso ideal ----
+# Fonte: Observatório da Criança e do Adolescente (Fundação Abrinq)
+# Bruto: raw/saude/Proporção de crianças de 5 a 10 anos de idade abaixo do peso ideal.xlsx
+# Aba 2, colunas "AAAA (%)" e "AAAA (absoluto)"; "-" = sem dado.
+nm_peso_pct <- "Crianças de 5 a 10 anos abaixo do peso ideal (%)"
+nm_peso_abs <- "Crianças de 5 a 10 anos abaixo do peso ideal (nº)"
+
+df_peso_ideal_long <- readxl::read_excel(
+  file.path(DIR_RAW_AURORA, "saude/Proporção de crianças de 5 a 10 anos de idade abaixo do peso ideal.xlsx"),
+  sheet = 2,
+  skip = 2,
+  col_types = "text"
+) %>%
+  rename_with(~ str_remove_all(., "[\u200B-\u200D\uFEFF]") %>% str_trim()) %>%
+  rename(cod_municipio = `Código IBGE`, nm_municipio = Localidade) %>%
+  filter(str_starts(cod_municipio, "26"), nchar(cod_municipio) == 7) %>%
+  select(cod_municipio, nm_municipio, matches("^[0-9]{4} \\((%|absoluto)\\)$")) %>%
+  pivot_longer(
+    cols = -c(cod_municipio, nm_municipio),
+    names_to = "col_orig",
+    values_to = "indicador"
+  ) %>%
+  mutate(
+    ano = as.numeric(str_extract(col_orig, "^[0-9]{4}")),
+    eh_abs = str_detect(col_orig, "absoluto"),
+    nm_indicador = if_else(eh_abs, nm_peso_abs, nm_peso_pct),
+    valor = suppressWarnings(as.numeric(indicador)),
+    indicador = case_when(
+      is.na(valor) ~ NA_character_,
+      eh_abs       ~ as.character(valor),
+      TRUE         ~ as.character(round(valor, 2))  # remove ruído de ponto flutuante (3.5000000000000004)
+    ),
+    mes_referencia = NA_character_
+  ) %>%
+  filter(!is.na(indicador)) %>%
+  select(cod_municipio, nm_municipio, ano, nm_indicador, indicador, mes_referencia)
+cli_alert_success("Peso ideal (5 a 10 anos) processado.")
+
+## 5.8.2 Óbitos maternos por cor/raça (Observatório da Criança e do Adolescente) ----
+# Ver decisão revisável D-001 ("-" = 0) em R/obitos_maternos.R
+df_obitos_mat_long <- ler_obitos_maternos(
+  file.path(DIR_RAW_AURORA, "saude/Número de óbitos maternos segundo cor_raça.xlsx"),
+  nivel = "municipio"
+)
+cli_alert_success("Óbitos maternos por cor/raça processados ({nrow(df_obitos_mat_long)} registros).")
+
 ## 5.9 Vulnerabilidade Social (Drive e Arquivos Locais) ----
 id_pasta_vulnerabilidade <- "11SbyKS9ZFN5mCDpIKorUmWEePIaMlQA-"
 arquivos_vulnerabilidade <- drive_ls(googledrive::as_id(id_pasta_vulnerabilidade))
@@ -745,6 +797,8 @@ df_indicadores_empilhados <- bind_rows(
   df_educacao_long,
   df_abrinq_long,
   df_saude_long,
+  df_peso_ideal_long,
+  df_obitos_mat_long,
   df_vulnerabilidade_long,
   df_urbanizacao_long,
   df_ivcad_long,
@@ -762,6 +816,8 @@ df_indicadores_empilhados <- bind_rows(
   mutate(
     nm_municipio = str_remove(nm_municipio, " \\(PE\\)| - [A-Z]{2}$"),
     indicador = case_when(
+      # já vem em % (0 a 100): não aplicar a conversão de proporção (0-1) para %
+      sigla_indicador == "peso_abaixo_5_10_pct" ~ indicador,
       tipo == "percentual" & suppressWarnings(as.numeric(indicador)) > 0 & suppressWarnings(as.numeric(indicador)) <= 1 ~ as.character(as.numeric(indicador) * 100),
       sigla_indicador %in% c("pib_pct", "pct_agua_rede", "pct_esgoto_rede") ~ as.character(round(as.numeric(indicador), 2)),
       TRUE ~ indicador
