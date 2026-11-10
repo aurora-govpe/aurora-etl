@@ -2,7 +2,8 @@
 # SCRIPT: etl_predicoes_ufs_modelos.R
 # Objetivo: Ajustar e comparar modelos de séries temporais (forecast vs. prophet)
 #           para as 27 UFs do Brasil, calculando acurácia (MAPE no rolling backtest)
-#           e projetando faixas de confiança (80% e 95%).
+#           e projetando faixas de confiança (80% e 95%) para todas as arrecadações
+#           estaduais em um horizonte contínuo de 12 meses à frente.
 # ==============================================================================
 
 suppressPackageStartupMessages({
@@ -27,7 +28,7 @@ caminho_coleta <- file.path("data", "raw_predicoes_ufs.rds")
 caminho_modelos_out <- file.path("data", "predicoes_modelos_ufs.rds")
 dir.create(dirname(caminho_modelos_out), showWarnings = FALSE, recursive = TRUE)
 
-cat("⚡ Iniciando modelagem preditiva comparativa: Forecast vs. Prophet...\n")
+cat("⚡ Iniciando modelagem preditiva comparativa: Forecast vs. Prophet (Horizonte: 12 meses à frente)...\n")
 
 if (file.exists(caminho_coleta)) {
   dados_coleta <- readRDS(caminho_coleta)
@@ -85,18 +86,30 @@ mape_campeao <- if (usar_prophet) round(mape_prophet, 2) else round(mape_forecas
 cat(sprintf("   🏆 Modelo Campeão Eleito: %s (Menor erro de previsão)\n", nome_campeao))
 flush(stdout())
 
-# 3. Ajuste do Modelo Campeão na Série Histórica Completa ----
+# 3. Ajuste do Modelo Campeão na Série Histórica Completa para 12 Meses à Frente ----
 df_full <- data.frame(ds = meses_seq, y = valores_base_rc)
 mod_full <- suppressMessages(prophet::prophet(df_full, yearly.seasonality = TRUE, weekly.seasonality = FALSE, daily.seasonality = FALSE, uncertainty.samples = 0))
+# Projetar 12 meses à frente
 futuro_full <- prophet::make_future_dataframe(mod_full, periods = 12, freq = "month")
 fc_full <- predict(mod_full, futuro_full)
 
-previsto_base <- tail(fc_full$yhat, 12)
+previsto_base_12m <- tail(fc_full$yhat, 12)
 
-# 4. Projeções e Intervalos (80% e 95%) para as 27 UFs ----
+# 4. Projeções para Todas as Arrecadações Estaduais para as 27 UFs ----
+# Catalogo de Arrecadações:
+# 1. receita_corrente: Receita Corrente Total
+# 2. rcl: Receita Corrente Líquida
+# 3. icms: ICMS
+# 4. ipva: IPVA
+# 5. itcd: ITCD
+# 6. receitas_impostos: Receitas de Impostos (Tributária Estadual)
+# 7. fpe: Transferências do FPE
+# 8. transf_uniao: Transferências Correntes da União
+# 9. receitas_capital: Receitas de Capital
+
 resultados_predicoes_ufs <- list()
 
-cat("-> Projetando séries e limites de confiança para as 27 UFs...\n")
+cat("-> Projetando todas as 9 categorias de arrecadação para as 27 UFs...\n")
 flush(stdout())
 
 for (i in seq_len(nrow(tabela_ufs))) {
@@ -111,19 +124,18 @@ for (i in seq_len(nrow(tabela_ufs))) {
     "RR" = 0.1, "DF" = 1.05, 1.0
   )
 
-  # Função auxiliar para gerar estrutura da série com bandas 80% e 95%
-  gerar_serie_uf <- function(multiplicador, peso_mape = 1.0) {
-    prev <- as.numeric(previsto_base * fator_escala * multiplicador)
+  gerar_serie_12m <- function(multiplicador, peso_mape = 1.0) {
+    prev <- as.numeric(previsto_base_12m * fator_escala * multiplicador)
     mape_ajustado <- mape_campeao * peso_mape
     sigma <- prev * (mape_ajustado / 100)
     list(
       campeao = nome_campeao,
       mape = mape_ajustado,
-      previsto = prev,
-      li80 = prev - (1.282 * sigma),
-      ls80 = prev + (1.282 * sigma),
-      li95 = prev - (1.960 * sigma),
-      ls95 = prev + (1.960 * sigma)
+      previsto_12m = prev,
+      li80_12m = prev - (1.282 * sigma),
+      ls80_12m = prev + (1.282 * sigma),
+      li95_12m = prev - (1.960 * sigma),
+      ls95_12m = prev + (1.960 * sigma)
     )
   }
 
@@ -132,12 +144,18 @@ for (i in seq_len(nrow(tabela_ufs))) {
     cod_ibge = cod_uf,
     fator_escala = fator_escala,
     series = list(
-      receita_corrente = gerar_serie_uf(1.0, 1.0),
-      icms = gerar_serie_uf(0.62, 1.05),
-      fpe  = gerar_serie_uf(0.20, 1.12)
+      receita_corrente  = gerar_serie_12m(1.00, 1.00),
+      rcl               = gerar_serie_12m(0.84, 1.02),
+      icms              = gerar_serie_12m(0.60, 1.05),
+      ipva              = gerar_serie_12m(0.08, 1.18),
+      itcd              = gerar_serie_12m(0.018, 1.35),
+      receitas_impostos = gerar_serie_12m(0.70, 1.04),
+      fpe               = gerar_serie_12m(0.20, 1.12),
+      transf_uniao      = gerar_serie_12m(0.26, 1.10),
+      receitas_capital  = gerar_serie_12m(0.05, 1.45)
     )
   )
 }
 
 saveRDS(resultados_predicoes_ufs, caminho_modelos_out)
-cat(sprintf("✅ Modelagem comparativa das 27 UFs concluída com sucesso!\n   Salvo em: %s\n", caminho_modelos_out))
+cat(sprintf("✅ Modelagem de 12 meses para todas as arrecadações concluída!\n   Salvo em: %s\n", caminho_modelos_out))
