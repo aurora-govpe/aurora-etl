@@ -4,7 +4,7 @@ Arquivo de contexto das alterações feitas com o Claude neste repositório. Atu
 
 ## Regras combinadas com a usuária
 - **Antes de qualquer `git push`**: rodar `git fetch` e comparar com `origin/main` (`git status -sb`, `git log HEAD..origin/main`). Se a nuvem mudou, fazer pull/merge primeiro e avisar.
-- **Nunca push direto na `main`** (instrução do Hugo, 2026-11-09): o trabalho vai numa branch e o **Hugo abre a Pull Request**. A conta da usuária só tem leitura no repositório (push retorna 403).
+- **Nunca push direto na `main`** (instrução do Hugo, 2026-11-09): o trabalho vai numa branch e vira Pull Request. Em 2026-11-09 a conta da usuária só tinha leitura (push 403); em 2026-11-10 já tinha escrita, a branch foi enviada e a usuária abriu a PR pelo navegador (sem `gh` instalado). Mesmo com escrita, nunca na `main`.
 - Antes de qualquer indicador novo ir adiante: testar se ele aparece na **base final** (`df_indicadores.parquet`).
 - Não commitar nem dar push sem pedido explícito.
 - Manter este arquivo atualizado.
@@ -67,7 +67,7 @@ Arquivo de contexto das alterações feitas com o Claude neste repositório. Atu
 - Teste na base final (2026-11-09): `etl_caracter_mun.R` completo rodou OK em ~74 s (via `log_step`, log em `logs/`). Em `C:/dados/aurora/parquet/df_indicadores.parquet`: `peso_abaixo_5_10_pct` (3.252 linhas) e `peso_abaixo_5_10_abs` (3.330), 185 municípios, 2008-2025, grupo/tipo/polaridade preenchidos, `rank_pe` e `ibge6` calculados, 0 divergências contra a planilha, 129 valores entre 0 e 1 preservados (sem ×100).
 - **Achado:** `etl_caracter_mun.R` regera `df_indicadores.parquet` do zero e **apaga os 6 indicadores INFOCOM** (`emp_infocom`, `estab_infocom`, `pct_emp_infocom_serv`, `pct_estab_infocom_serv`, `pct_vab_infocom_serv`, `ql_infocom_serv`; 4.440 linhas). Eles são acrescentados depois por `etl/municipios/etl_infocom_servicos.R`, que **não está no `ETL_AUTO.R`** e usa caminho fixo `C:/Users/hugo.vasconcelos/...` (não roda em outras máquinas). Não é causado por este indicador; avisar o Hugo. Localmente as linhas foram restauradas a partir do backup.
 - Backup dos parquet/rds anteriores à execução: `C:\Users\kattinecosta\Documents\backup_etl_2026-11-09\`.
-- Push direto: bloqueado (403). Caminho: branch `feat/indicador-peso-ideal` + patches para o Hugo abrir a PR.
+- 2026-11-10: permissão de escrita confirmada; branch `feat/indicador-peso-ideal` rebaseada na `main` (b84c9a6) e enviada; PR aberta pela usuária no navegador. Pendentes fora do Git: 2 linhas na `lista de indicadores.xlsx` e aviso do achado INFOCOM ao Hugo.
 
 ## Pendências / perguntas em aberto
 - Detalhes da planilha e do indicador (ver acima).
