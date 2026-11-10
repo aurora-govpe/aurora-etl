@@ -269,5 +269,30 @@ df_transporte_final <- df_onibus %>%
     fonte                  = "SEE"
   ) 
 
+df_transporte_final2 <- df_transporte_final %>%
+  mutate(municipio = case_when(
+    municipio == "SÃO CAETANO" ~ "SÃO CAITANO",
+    TRUE ~ municipio
+  )) %>%
+  mutate(municipio_norm = padronizar_municipio(municipio)) %>%
+  left_join(de_para_ibge, by = "municipio_norm") %>%
+  select(ibge7, everything(), -municipio_norm)
+
+df_transporte_final2 %>% filter(is.na(ibge7) & !is.na(municipio)) %>% distinct(municipio)
+
+# Exportação Parquet
+arrow::write_parquet(
+  x = df_transporte_final2,
+  sink = file.path(DIR_EXPORT_PARQUET, "df_transporte.parquet")
+)
+
+# Exportação JSON
+jsonlite::write_json(
+  x = df_transporte_final2,
+  path = file.path(DIR_EXPORT_JSON, "df_transporte.json"),
+  pretty = TRUE,
+  auto_unbox = TRUE,
+  na = "null"
+)
+
 cli_alert_success("Convênios da Educação (SEE) processados com sucesso ({nrow(dados_convenios_educacao)} registros).")
-glimpse(dados_convenios_educacao)

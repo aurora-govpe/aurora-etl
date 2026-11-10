@@ -58,8 +58,13 @@ if (!file.exists(caminho_csv)) {
   cli_abort("Arquivo de população municipal não encontrado em: {.path {caminho_csv}}")
 }
 
-ficha_municipal <- fread(caminho_csv, encoding = "Latin-1") %>% 
+# Se a origem for UTF-8:
+ficha_municipal <- fread(caminho_csv, encoding = "UTF-8") %>% 
   clean_names()
+
+# Garantir que todas as colunas de texto fiquem marcadas explicitamente como UTF-8:
+ficha_municipal <- ficha_municipal %>%
+  mutate(across(where(is.character), enc2utf8))
 
 cli_alert_success("Ficha municipal carregada com sucesso ({nrow(ficha_municipal)} municípios).")
 

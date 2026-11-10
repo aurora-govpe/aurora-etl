@@ -246,6 +246,22 @@ arrow::write_parquet(df_pcp_final, file.path(dir_parquet_out, "df_pcp.parquet"),
 arrow::write_parquet(df_pcp_final, file.path(LOCAL_PATH, "df_pcp.parquet"), compression = "snappy")
 arrow::write_parquet(df_pcp_final, file.path(dir_parquet_pcp, "df_pcp.parquet"), compression = "snappy")
 
+df_pcp_final2 <- df_pcp_final %>%
+  mutate(municipio_norm = padronizar_municipio(municipio)) %>%
+  left_join(de_para_ibge, by = "municipio_norm") %>%
+  select(ibge7, everything(), -municipio_norm)
+
+df_pcp_final2 %>% filter(is.na(ibge7) & !is.na(municipio)) %>% distinct(municipio)
+
+# Exportação JSON
+jsonlite::write_json(
+  x = df_pcp_final2,
+  path = file.path(DIR_EXPORT_JSON, "df_pcp.json"),
+  pretty = TRUE,
+  auto_unbox = TRUE,
+  na = "null"
+)
+
 cli_alert_success("Bases locais salvas em XLSX, RDS e Parquet em {.path {DIR_OUT_AURORA}}.")
 
 # ------------------------------------------------------------------------------
