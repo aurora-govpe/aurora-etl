@@ -69,6 +69,18 @@ Arquivo de contexto das alterações feitas com o Claude neste repositório. Atu
 - Backup dos parquet/rds anteriores à execução: `C:\Users\kattinecosta\Documents\backup_etl_2026-11-09\`.
 - 2026-11-10: permissão de escrita confirmada; branch `feat/indicador-peso-ideal` rebaseada na `main` (b84c9a6) e enviada; PR aberta pela usuária no navegador. Pendentes fora do Git: 2 linhas na `lista de indicadores.xlsx` e aviso do achado INFOCOM ao Hugo.
 
+## Decisões revisáveis (registro para revisão/revogação posterior)
+| ID | Data | Quem decidiu | Decisão | Como revogar |
+|---|---|---|---|---|
+| D-001 | 2026-11-10 | Kattine Costa Pedrosa (usuária) | Na planilha de óbitos maternos, o `-` (que de 2016 em diante substitui o 0 nos municípios) é tratado como **0 óbito**. Evidência a favor: de 2000 a 2015 o 0 vem explícito e não há `-`; de 2016 a 2025 não há nenhum 0 e o `-` aparece em ~140-150 municípios/ano; a soma dos 185 municípios de PE bate com o total da UF em todas as 182 combinações categoria x ano (0 divergências). | `AURORA_OBITOS_MAT_TRACO_COMO_ZERO=false` (o `-` passa a ser descartado) ou remover o tratamento em `R/obitos_maternos.R`. Cada execução registra no log (WARN) quantas células foram convertidas. |
+
+## Indicador novo: Óbitos maternos por cor/raça (2026-11-10)
+- Fonte: Observatório da Criança e do Adolescente (Fundação Abrinq), `saude/Número de óbitos maternos segundo cor_raça.xlsx` (cópia da `(3)` de Downloads; as 4 cópias tinham md5 diferentes, 2 delas de ~3 KB). Só contagens (absolutos), 2000-2025.
+- 7 indicadores (`obitos_mat_indigena|preta|branca|amarela|parda|ignorada|total`), grupo saúde, tipo absoluto, polaridade negativa, em município (PE, 185; exclui a linha "Município Ignorado - PE" 2600000) e UF (27). Leitura única em `R/obitos_maternos.R`, usada por `etl_caracter_mun.R` (bloco 5.8.2) e `etl_indicadores_ufs.R` (bloco 5.7.1).
+- Esperado: municípios 185 x 26 anos x 7 = 33.670 linhas; UFs 27 x 26 x 7 = 4.914. Conferido no helper.
+- Branch `feat/indicador-obitos-maternos-cor-raca`, **empilhada** sobre `feat/indicador-peso-ideal` (precisa do logger e deste arquivo, que só existem naquela PR).
+- Exige 7 linhas novas em `Sheet1` e 7 em `UFs` da `lista de indicadores.xlsx` (backup `lista de indicadores.BACKUP_2026-11-10.xlsx`).
+
 ## Pendências / perguntas em aberto
 - Detalhes da planilha e do indicador (ver acima).
 - Destino: arquivo em `C:/dados/aurora` ou bucket S3?

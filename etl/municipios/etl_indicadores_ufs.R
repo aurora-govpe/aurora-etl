@@ -35,6 +35,12 @@ if (file.exists("R/paths.R")) {
   source("etl/paths.R")
 }
 
+if (file.exists("R/obitos_maternos.R")) {
+  source("R/obitos_maternos.R")
+} else if (file.exists("../R/obitos_maternos.R")) {
+  source("../R/obitos_maternos.R")
+}
+
 # Fallbacks defensivos para execuções avulsas
 if (!exists("DIR_ETL"))        DIR_ETL        <- getwd()
 if (!exists("DIR_RAW_AURORA")) DIR_RAW_AURORA <- file.path(DIR_ETL, "data")
@@ -463,6 +469,16 @@ df_saude_gestao_ufs <- bind_rows(
 )
 cli_alert_success("Saúde por tipo de gestão processada.")
 
+## 5.7.1 Óbitos maternos por cor/raça (Observatório da Criança e do Adolescente) ----
+# Ver decisão revisável D-001 ("-" = 0) em R/obitos_maternos.R
+df_obitos_mat_ufs <- ler_obitos_maternos(
+  file.path(DIR_RAW_AURORA, "saude/Número de óbitos maternos segundo cor_raça.xlsx"),
+  nivel = "uf"
+) %>%
+  inner_join(tb_ufs %>% select(cod_uf, sg_uf, nm_uf) %>% mutate(cod_uf = as.character(cod_uf)) %>% distinct(), by = "cod_uf") %>%
+  select(cod_uf, sg_uf, nm_uf, ano, indicador, mes_referencia, sigla_indicador)
+cli_alert_success("Óbitos maternos por cor/raça (UFs) processados ({nrow(df_obitos_mat_ufs)} registros).")
+
 ## 5.8 Escolarização no Ensino Médio ----
 extrair_escolarizacao_em_uf <- function() {
   if (!file.exists(caminho_escolarizacao)) {
@@ -576,6 +592,7 @@ df_indicadores_ufs <- bind_rows(
   df_celulares_ufs,
   df_cvp_ufs,
   df_saude_gestao_ufs,
+  df_obitos_mat_ufs,
   df_escolarizacao_ufs,
   df_mapbiomas_ufs
 ) %>%

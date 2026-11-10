@@ -39,6 +39,12 @@ if (file.exists("R/paths.R")) {
   source("etl/paths.R")
 }
 
+if (file.exists("R/obitos_maternos.R")) {
+  source("R/obitos_maternos.R")
+} else if (file.exists("../R/obitos_maternos.R")) {
+  source("../R/obitos_maternos.R")
+}
+
 # Fallbacks defensivos para execuções avulsas
 if (!exists("DIR_ETL"))        DIR_ETL        <- getwd()
 if (!exists("DIR_RAW_AURORA")) DIR_RAW_AURORA <- file.path(DIR_ETL, "data")
@@ -455,6 +461,14 @@ df_peso_ideal_long <- readxl::read_excel(
   select(cod_municipio, nm_municipio, ano, nm_indicador, indicador, mes_referencia)
 cli_alert_success("Peso ideal (5 a 10 anos) processado.")
 
+## 5.8.2 Óbitos maternos por cor/raça (Observatório da Criança e do Adolescente) ----
+# Ver decisão revisável D-001 ("-" = 0) em R/obitos_maternos.R
+df_obitos_mat_long <- ler_obitos_maternos(
+  file.path(DIR_RAW_AURORA, "saude/Número de óbitos maternos segundo cor_raça.xlsx"),
+  nivel = "municipio"
+)
+cli_alert_success("Óbitos maternos por cor/raça processados ({nrow(df_obitos_mat_long)} registros).")
+
 ## 5.9 Vulnerabilidade Social (Drive e Arquivos Locais) ----
 id_pasta_vulnerabilidade <- "11SbyKS9ZFN5mCDpIKorUmWEePIaMlQA-"
 arquivos_vulnerabilidade <- drive_ls(googledrive::as_id(id_pasta_vulnerabilidade))
@@ -784,6 +798,7 @@ df_indicadores_empilhados <- bind_rows(
   df_abrinq_long,
   df_saude_long,
   df_peso_ideal_long,
+  df_obitos_mat_long,
   df_vulnerabilidade_long,
   df_urbanizacao_long,
   df_ivcad_long,
