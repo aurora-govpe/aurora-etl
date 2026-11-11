@@ -18,8 +18,6 @@ scripts <- c(
   'etl_03_iniciativas_ipa_sepe.R',
   'etl_04_seduh.R',
   'etl_05_iniciativas_join.R',
-  'etl_pac.R', # pegar todo mês do site da casa civil
-  'municipios/etl_urbanizacao.R', 
   'municipios/etl_demografia_pe.R',
   'municipios/etl_vulnerabilidade_social.R',
   'municipios/etl_mvi_cvp_muni.R',
@@ -31,32 +29,41 @@ scripts <- c(
   'fiscal/etl_execucao_bdpe_IGPE.R',
   # 'etl_cozinhas.R', # nao ta puxando os dados
   'etl_PCP.R',
-  'municipios/etl_indicadores_ufs.R', ## falta dados brutos
   'municipios/etl_indicadores_regioes_br.R' ## falta dados brutos
   
   #'fiscal/etl_transferencias_voluntarias.R' ## Roda no servidor
   
-  
   ### CONFERIR ANTES DE RODAS ---------------
   # 'etl_carga_servidor.R'
   ## ----------------------------------------
-  
+)
+
+scripts_semanal <- c(
   ### ROTINAS SEMANAIS ----------------------
-  #, 'R/gerador_pdfs.R', # uma vez na semana
-  #, 'mulungu/ETL_AUTO_MULUNGU.R' # semanal
-  #'RPA/rpa_emendas.py ## Semanal 
-  #'RPA/rpa_cadunico.py ## Semanal 
-  ## ---------------------------------------
-  
+  'R/gerador_pdfs.R',
+  'mulungu/ETL_AUTO_MULUNGU.R',
+  'RPA/rpa_emendas.py', 
+  'RPA/rpa_cadunico.py' 
+)
+
+scripts_mensais <- c(
   ### ROTINAS MENSAIS ----------------------
-  #'RPA/rpa_compesa.py ## Mensal
-  ## ---------------------------------------
-  
+  'RPA/rpa_compesa.py',
+  'etl_pac.R' # pegar todo mês do site da casa civil
+)
+
+scripts_bimestral <- c(
   ### ROTINAS BIMESTRAL --------------------
-  #' fiscal/etl_rreo_mun_pe.R' #roda uma vez bimestralmente jan, mar, mai, jul, set, nov
-  #' fiscal/etl_rreo_ufs.R' #roda uma vez bimestralmente jan, mar, mai, jul, set, nov
-  ## ---------------------------------------
-  
+  'fiscal/etl_rreo_mun_pe.R', #roda uma vez bimestralmente jan, mar, mai, jul, set, nov
+  ' fiscal/etl_rreo_ufs.R' #roda uma vez bimestralmente jan, mar, mai, jul, set, nov
+)
+
+scripts_anual <- c(
+  ### ROTINAS ANUAIS/SOB DEMANDA --------------------
+  'etl_agricultura_sidra.R',
+  'etl_movimentacoes_aeroportuarias.R',
+  ' municipios/etl_indicadores_ufs.R', ## só precisa rodar quando tiver atualizações nas bases
+  'municipios/etl_urbanizacao.R'
 )
 
 
