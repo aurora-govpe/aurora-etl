@@ -44,6 +44,11 @@ if (file.exists("R/obitos_maternos.R")) {
 } else if (file.exists("../R/obitos_maternos.R")) {
   source("../R/obitos_maternos.R")
 }
+if (file.exists("R/abrinq_planilhas.R")) {
+  source("R/abrinq_planilhas.R")
+} else if (file.exists("../R/abrinq_planilhas.R")) {
+  source("../R/abrinq_planilhas.R")
+}
 
 # Fallbacks defensivos para execuções avulsas
 if (!exists("DIR_ETL"))        DIR_ETL        <- getwd()
@@ -469,6 +474,11 @@ df_obitos_mat_long <- ler_obitos_maternos(
 )
 cli_alert_success("Óbitos maternos por cor/raça processados ({nrow(df_obitos_mat_long)} registros).")
 
+## 5.8.3 Lote Abrinq: acidentes de trabalho (5 a 17 anos) e mortalidade por saneamento inadequado ----
+# Ver decisões revisáveis D-002 e D-003 em R/abrinq_planilhas.R
+df_abrinq_lote_long <- ler_abrinq_lote(DIR_RAW_AURORA, nivel = "municipio")
+cli_alert_success("Lote Abrinq (acidentes de trabalho e mortalidade por saneamento) processado ({nrow(df_abrinq_lote_long)} registros).")
+
 ## 5.9 Vulnerabilidade Social (Drive e Arquivos Locais) ----
 id_pasta_vulnerabilidade <- "11SbyKS9ZFN5mCDpIKorUmWEePIaMlQA-"
 arquivos_vulnerabilidade <- drive_ls(googledrive::as_id(id_pasta_vulnerabilidade))
@@ -799,6 +809,7 @@ df_indicadores_empilhados <- bind_rows(
   df_saude_long,
   df_peso_ideal_long,
   df_obitos_mat_long,
+  df_abrinq_lote_long,
   df_vulnerabilidade_long,
   df_urbanizacao_long,
   df_ivcad_long,
