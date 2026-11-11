@@ -3,7 +3,6 @@
 # Objetivo: Carregar bibliotecas, definir variáveis de ambiente/diretórios,
 #           funções auxiliares, esquemas de dados e efetuar autenticações de API.
 # ==============================================================================
-
 # ------------------------------------------------------------------------------
 # 1. CARREGAMENTO DE BIBLIOTECAS
 # ------------------------------------------------------------------------------
@@ -23,6 +22,29 @@ library(stringi)
 library(stringr)
 library(tidyverse)
 library(vialactea)
+
+
+# ------------------------------------------------------------------------------
+# FUNÇÃO DE NORMALIZAÇÃO DE NOMES DE MUNICÍPIO
+# ------------------------------------------------------------------------------
+padronizar_municipio <- function(x) {
+  x %>%
+    as.character() %>%
+    str_replace_all("(?i)\\s*-\\s*PE$", "") %>% # Remove ' - PE' ou '-PE'
+    stri_trans_general("Latin-ASCII") %>%      # Remove acentuações (Água Preta -> Agua Preta)
+    str_squish() %>%                           # Remove múltiplos espaços em branco
+    toupper()                                  # Padroniza em maiúsculas
+}
+
+# ------------------------------------------------------------------------------
+# PREPARAÇÃO DO DICIONÁRIO DE-PARA (IBGE7)
+# ------------------------------------------------------------------------------
+de_para_ibge <- ficha_municipal %>%
+  select(ibge7, municipio) %>%
+  distinct(ibge7, .keep_all = TRUE) %>%
+  mutate(municipio_norm = padronizar_municipio(municipio)) %>%
+  select(ibge7, municipio_norm)
+
 
 # ------------------------------------------------------------------------------
 # 2. AMBIENTE E DIRETÓRIOS DINÂMICOS

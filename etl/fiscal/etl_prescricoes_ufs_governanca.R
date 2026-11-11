@@ -26,7 +26,7 @@ dir_out_app <- file.path("..", "aurora_fiscal", "data")
 dir.create(dir_out_app, showWarnings = FALSE, recursive = TRUE)
 
 caminho_json_app <- file.path(dir_out_app, "base_predicoes.json")
-caminho_json_central <- "C:/dados/aurora/base_predicoes.json"
+caminho_json_central <- "C:/dados/aurora/json/base_predicoes.json"
 
 cat("⚡ Consolidando governança, spending review e todas as 9 arrecadações para as 27 UFs...\n")
 
