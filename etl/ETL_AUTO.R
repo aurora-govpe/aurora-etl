@@ -62,14 +62,11 @@ scripts_anual <- c(
   ### ROTINAS ANUAIS/SOB DEMANDA --------------------
   'etl_agricultura_sidra.R',
   'etl_movimentacoes_aeroportuarias.R',
-  ' municipios/etl_indicadores_ufs.R', ## só precisa rodar quando tiver atualizações nas bases
-  'municipios/etl_urbanizacao.R'
-  #' fiscal/etl_predicoes_ufs_coleta.R',
-  #' fiscal/etl_predicoes_ufs_modelos.R',
-  #' fiscal/etl_prescricoes_ufs_governanca.R',
-  #' fiscal/etl_rreo_ufs.R' #roda uma vez bimestralmente jan, mar, mai, jul, set, nov
-  ## ---------------------------------------
-  
+  'municipios/etl_indicadores_ufs.R', ## só precisa rodar quando tiver atualizações nas bases
+  'municipios/etl_urbanizacao.R',
+  ' fiscal/etl_predicoes_ufs_coleta.R',
+  ' fiscal/etl_predicoes_ufs_modelos.R',
+  ' fiscal/etl_prescricoes_ufs_governanca.R'
 )
 
 
