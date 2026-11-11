@@ -55,7 +55,10 @@ scripts_mensais <- c(
 scripts_bimestral <- c(
   ### ROTINAS BIMESTRAL --------------------
   'fiscal/etl_rreo_mun_pe.R', #roda uma vez bimestralmente jan, mar, mai, jul, set, nov
-  ' fiscal/etl_rreo_ufs.R' #roda uma vez bimestralmente jan, mar, mai, jul, set, nov
+  ' fiscal/etl_rreo_ufs.R',  #roda uma vez bimestralmente jan, mar, mai, jul, set, nov
+  'fiscal/etl_predicoes_ufs_coleta.R',
+  'fiscal/etl_predicoes_ufs_modelos.R',
+  'fiscal/etl_prescricoes_ufs_governanca.R' 
 )
 
 scripts_anual <- c(
@@ -63,10 +66,7 @@ scripts_anual <- c(
   'etl_agricultura_sidra.R',
   'etl_movimentacoes_aeroportuarias.R',
   'municipios/etl_indicadores_ufs.R', ## só precisa rodar quando tiver atualizações nas bases
-  'municipios/etl_urbanizacao.R',
-  ' fiscal/etl_predicoes_ufs_coleta.R',
-  ' fiscal/etl_predicoes_ufs_modelos.R',
-  ' fiscal/etl_prescricoes_ufs_governanca.R'
+  'municipios/etl_urbanizacao.R'
 )
 
 
