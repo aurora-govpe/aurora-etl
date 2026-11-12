@@ -5,27 +5,6 @@
 # ==============================================================================
 
 # ------------------------------------------------------------------------------
-# 0. FUNÇÃO DE NORMALIZAÇÃO DE NOMES DE MUNICÍPIO
-# ------------------------------------------------------------------------------
-padronizar_municipio <- function(x) {
-  x %>%
-    as.character() %>%
-    str_replace_all("(?i)\\s*-\\s*PE$", "") %>% # Remove ' - PE' ou '-PE'
-    stri_trans_general("Latin-ASCII") %>%      # Remove acentuações (Água Preta -> Agua Preta)
-    str_squish() %>%                           # Remove múltiplos espaços em branco
-    toupper()                                  # Padroniza em maiúsculas
-}
-
-# ------------------------------------------------------------------------------
-# 1. PREPARAÇÃO DO DICIONÁRIO DE-PARA (IBGE7)
-# ------------------------------------------------------------------------------
-de_para_ibge <- ficha_municipal %>%
-  select(ibge7, municipio) %>%
-  distinct(ibge7, .keep_all = TRUE) %>%
-  mutate(municipio_norm = padronizar_municipio(municipio)) %>%
-  select(ibge7, municipio_norm)
-
-# ------------------------------------------------------------------------------
 # 1. CEHAB (COMPANHIA ESTADUAL DE HABITAÇÃO E OBRAS)
 # ------------------------------------------------------------------------------
 url_dados_cehab <- "https://docs.google.com/spreadsheets/d/1iE3Sl2CTIDH2cbEp4fI4Tqk-dS92pze83RgTmNC5NRI/edit?gid=1983646507#gid=1983646507"
@@ -337,10 +316,7 @@ jsonlite::write_json(
 #   na = "null"
 # )
 
-cli_alert_success(
-  "df_habitacao exportado com ibge7 ({sum(!is.na(df_habitacao_final$ibge7))}/{nrow(df_habitacao_final)} casados)."
-)
-
+cat("✅ Scripts de habitação finalizados\n")
 
 df_regularizacoes_final %>% filter(is.na(ibge7) & !is.na(municipio)) %>% distinct(municipio)
 seduh_sehab_df_multi %>% filter(is.na(ibge7) & !is.na(municipio)) %>% distinct(municipio)

@@ -25,7 +25,8 @@ arquivos <- c(
 # Tem arquivo parquet gerado direto do servidor, então é necessário subir apenas os atualizados localmente para não dar problema de desatualização ou conflito de dados
 ## ---------------------------------------------------------------------------
 arquivos_parquet <- c(
-# Aurora Orcamento
+  
+# Aurora Orcamento -------------------------------------------------------------
 "parquet/dados_op_cred.parquet",
 "parquet/execucao_bdpe.parquet",
 
@@ -39,16 +40,18 @@ arquivos_parquet <- c(
 "parquet/dim_contrato.parquet",
 "parquet/dim_despesa_gerencial.parquet",
 
-# Aurora Iniciativas 
+# Aurora Iniciativas -----------------------------------------------------------
 
 "parquet/df_iniciativas.parquet",
 "parquet/df_cozinhas.parquet",
 "parquet/dados_pac.parquet",
 "parquet/dados_emendas.parquet",
 "parquet/df_pcp.parquet",
-"parquet/ficha_municipal.parquet"
+"parquet/ficha_municipal.parquet",
 
-## Aurora Municípios - Programa 
+## Aurora Municípios - UFs ------------------------------------------------
+
+"parquet/df_indicadores_ufs.parquet"
 
 )
 
