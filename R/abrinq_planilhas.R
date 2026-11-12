@@ -32,6 +32,28 @@
 #
 # Nota (não é decisão): na mortalidade o "-" é descartado (não vira 0) porque
 # nessa planilha o 0 aparece explícito no absoluto; "-" = dado não calculado.
+#
+# --- Lote trabalho infantil (usuária Kattine Costa Pedrosa, 2026-11-12) ---
+# D-004  Apenas autoconsumo: em 4 das 5 séries (5-9, 10-13, 14-15 e 16-17 anos) todo
+#        o 2022 é idêntico ao 2019 (28 de 28 linhas) -> cópia da fonte; 2022 descartado
+#        nessas 4 séries (o total 5-17 mantém 2022, que difere de 2019).
+#        Revogar: AURORA_TI_AUTOCONSUMO_2022_DESCARTAR=false.
+#
+# D-005  Lista TIP: o % de 2022 das UFs nas 4 faixas etárias está em escala errada
+#        (denominador implícito ~755 mil = total do Brasil, em todas as UFs; ex.: PE
+#        14-15 anos = 0,35% com 2.660 casos; nos outros anos ~25%). Descartado só o % de
+#        2022 das UFs nessas 4 faixas; absolutos e total 5-17 ficam.
+#        Revogar: AURORA_TI_TIP_PCT_2022_UF_DESCARTAR=false.
+#
+# D-006  Atividades econômicas ou autoconsumo, 16-17 anos: o % de 2017 é ~2x o esperado
+#        (Brasil 29,4% contra 15,9% em 2016 e 15,3% em 2018; o absoluto é coerente).
+#        Descartado só o % de 2017 dessa série.
+#        Revogar: AURORA_TI_ECON_1617_PCT_2017_DESCARTAR=false.
+#
+# Nota (não é decisão): nas planilhas de trabalho infantil só há UFs (sem municípios);
+# a de estabelecimentos agropecuários traz municípios e UFs (só 2017). O "%" dos
+# arquivos "Lista TIP" é composição: nas faixas etárias, % do total em atividades da
+# Lista TIP; no total 5-17, % dos que estão em trabalho infantil.
 # ==============================================================================
 
 ABRINQ_ARQUIVOS <- c(
@@ -39,7 +61,21 @@ ABRINQ_ARQUIVOS <- c(
   acid_cor   = "cidadania/Notificações de acidentes de trabalho entre crianças e adolescentes entre 5 e 17 anos de idade segundo cor_raça.xlsx",
   acid_evol  = "cidadania/Notificações de acidentes de trabalho entre crianças e adolescentes entre 5 e 17 anos de idade segundo evolução dos casos.xlsx",
   acid_sexo  = "cidadania/Notificações de acidentes de trabalho entre crianças e adolescentes entre 5 e 17 anos de idade segundo sexo.xlsx",
-  mort       = "saude/Taxa de mortalidade atribuída a fontes de água inadequadas, saneamento inadequado e falta de higiene segundo grupos etários.xlsx"
+  mort       = "saude/Taxa de mortalidade atribuída a fontes de água inadequadas, saneamento inadequado e falta de higiene segundo grupos etários.xlsx",
+  ti_econ    = "cidadania/População de 5 a 17 anos de idade em situação de trabalho infantil que realizaram atividades econômicas ou autoconsumo (a partir de 2016).xlsx",
+  ti_tip     = "cidadania/População de 5 a 17 anos de idade em situação de trabalho infantil que realizaram atividades identificadas na Lista TIP das piores formas de trabalho infantil (a partir de 2016).xlsx",
+  ti_autoc   = "cidadania/População de cinco a 17 anos de idade em situação de trabalho infantil que realizaram apenas atividades de autoconsumo (a partir de 2016).xlsx",
+  ti_agro    = "cidadania/População com até 14 anos de idade ocupada em estabelecimentos agropecuários.xlsx"
+)
+
+# Decisões D-004/D-005/D-006: exclusões pontuais (sigla, tipo de série, ano, nível)
+.abq_exclusoes <- data.frame(
+  id = c("D-004", "D-005", "D-006"),
+  env = c("AURORA_TI_AUTOCONSUMO_2022_DESCARTAR", "AURORA_TI_TIP_PCT_2022_UF_DESCARTAR", "AURORA_TI_ECON_1617_PCT_2017_DESCARTAR"),
+  sigla_rx = c("^ti_autoc_(5_9|10_13|14_15|16_17)_abs$", "^ti_tip_(5_9|10_13|14_15|16_17)_pct$", "^ti_econ_16_17_pct$"),
+  ano = c(2022, 2022, 2017),
+  nivel = c("uf", "uf", "uf"),
+  stringsAsFactors = FALSE
 )
 
 .abq_catalogo <- function() {
@@ -61,7 +97,45 @@ ABRINQ_ARQUIVOS <- c(
     rbind(if (taxa) f("taxa", "taxa", "Taxa por 100 mil hab.", "índice", "taxa"),
           f("abs", "abs", "Nº de óbitos", "absoluto", "nº"))
   }
+  # Trabalho infantil (5 a 17 anos): pct = "taxa" (colunas "(%)"), abs = "abs" ou "valor" (sem sufixo)
+  ti <- function(arquivo, rotulo, serie, sigla, nm, fantasia, tipo) data.frame(
+    arquivo = arquivo, rotulo = rotulo, serie = serie, sigla_indicador = sigla,
+    nm_indicador = nm, nm_fantasia = fantasia, grupo = "cidadania", tipo = tipo,
+    polaridade = "negativa", traco_zero = FALSE, stringsAsFactors = FALSE)
+  ti_faixa <- function(arquivo, pre, nm_base, fan_base, rotulo, sigla, faixa, pct_txt, serie_abs = "abs", com_pct = TRUE) {
+    rbind(
+      if (com_pct) ti(arquivo, rotulo, "taxa", paste0(pre, "_", sigla, "_pct"),
+                      paste0(nm_base, " - ", faixa, " - ", pct_txt),
+                      paste0(fan_base, " (", faixa, ", %)"), "percentual"),
+      ti(arquivo, rotulo, serie_abs, paste0(pre, "_", sigla, "_abs"),
+         paste0(nm_base, " - ", faixa, " - Nº de pessoas"),
+         paste0(fan_base, " (", faixa, ", nº)"), "absoluto"))
+  }
+  faixas <- list(c("5_9", "5 a 9 anos", "^5 a 9 anos de idade$"), c("10_13", "10 a 13 anos", "^10 a 13 anos de idade$"),
+                 c("14_15", "14 a 15 anos", "^14 a 15 anos de idade$"), c("16_17", "16 a 17 anos", "^16 a 17 anos de idade$"))
+  rot_total <- "^Total de população de 5 a 17 anos"
+  ti_serie <- function(arquivo, pre, nm_base, fan_base, pct_faixa, pct_total, serie_abs = "abs", com_pct = TRUE) {
+    do.call(rbind, c(
+      list(ti_faixa(arquivo, pre, nm_base, fan_base, rot_total, "total", "Total 5 a 17 anos", pct_total, serie_abs, com_pct)),
+      lapply(faixas, function(f) ti_faixa(arquivo, pre, nm_base, fan_base, f[3], f[1], f[2], pct_faixa, serie_abs, com_pct))))
+  }
+  ti_todos <- rbind(
+    ti_serie("ti_econ", "ti_econ", "Trabalho infantil (5 a 17 anos) - Atividades econômicas ou autoconsumo",
+             "Trabalho infantil: econômicas ou autoconsumo", "% da população da faixa etária", "% da população de 5 a 17 anos"),
+    ti_serie("ti_tip", "ti_tip", "Trabalho infantil (5 a 17 anos) - Atividades da Lista TIP (piores formas)",
+             "Trabalho infantil: Lista TIP", "% do total em atividades da Lista TIP", "% do total em trabalho infantil"),
+    ti_serie("ti_autoc", "ti_autoc", "Trabalho infantil (5 a 17 anos) - Apenas autoconsumo",
+             "Trabalho infantil: apenas autoconsumo", NA, NA, serie_abs = "valor", com_pct = FALSE),
+    ti("ti_agro", "^Menores de 14 anos", "taxa", "ocup_agro_ate14_pct",
+       "População até 14 anos ocupada em estabelecimentos agropecuários - % da população até 14 anos",
+       "Ocupados em estabelecimentos agropecuários até 14 anos (%)", "percentual"),
+    ti("ti_agro", "^Menores de 14 anos", "abs", "ocup_agro_ate14_abs",
+       "População até 14 anos ocupada em estabelecimentos agropecuários - Nº de pessoas",
+       "Ocupados em estabelecimentos agropecuários até 14 anos (nº)", "absoluto")
+  )
+
   rbind(
+    ti_todos,
     acid("acid_cor",   "^Total de acidentes relacionados ao trabalho de crianças e adolescentes", "5_17_total", "Total", "total"),
     acid("acid_idade", "^5 a 9 anos de idade$",   "5_9",   "5 a 9 anos",   "5 a 9 anos"),
     acid("acid_idade", "^10 a 14 anos de idade$", "10_14", "10 a 14 anos", "10 a 14 anos"),
@@ -115,6 +189,7 @@ ler_abrinq_lote <- function(dir_raw, nivel = c("municipio", "uf")) {
   ano_max_taxa_mun <- suppressWarnings(as.numeric(Sys.getenv("AURORA_MORT_SANEA_TAXA_MUN_ANO_MAX", "2019")))
   if (is.na(ano_max_taxa_mun)) ano_max_taxa_mun <- 2019
   n_traco <- 0L; n_taxa_cortada <- 0L
+  n_excl <- setNames(rep(0L, nrow(.abq_exclusoes)), .abq_exclusoes$id)
   out <- list()
 
   for (chave in names(ABRINQ_ARQUIVOS)) {
@@ -163,8 +238,18 @@ ler_abrinq_lote <- function(dir_raw, nivel = c("municipio", "uf")) {
       }
       d <- d[!is.na(d$indicador) & !d$indicador %in% c("-", "ND", "nan", "NA"), ]
 
+      for (j in seq_len(nrow(.abq_exclusoes))) {                              # D-004, D-005, D-006
+        ex <- .abq_exclusoes[j, ]
+        if (nivel == ex$nivel && grepl(ex$sigla_rx, cl$sigla_indicador) &&
+            .abq_flag(ex$env, "true")) {
+          sai <- d$ano == ex$ano
+          n_excl[ex$id] <- n_excl[ex$id] + sum(sai)
+          d <- d[!sai, ]
+        }
+      }
+
       if (cl$serie == "taxa") {
-        if (nivel == "municipio") {                                           # D-003
+        if (nivel == "municipio" && cl$arquivo == "mort") {                   # D-003
           n_taxa_cortada <- n_taxa_cortada + sum(d$ano > ano_max_taxa_mun)
           d <- d[d$ano <= ano_max_taxa_mun, ]
         }
@@ -183,6 +268,19 @@ ler_abrinq_lote <- function(dir_raw, nivel = c("municipio", "uf")) {
     .abq_log(sprintf("DECISAO REVISAVEL D-002 (2026-11-11): %d celulas '-' das planilhas de acidentes de trabalho (%s) foram convertidas em 0. Revogar: AURORA_ACIDENTES_TRABALHO_TRACO_COMO_ZERO=false.", n_traco, nivel))
   } else {
     .abq_log(sprintf("D-002 REVOGADA por variavel de ambiente: celulas '-' das planilhas de acidentes (%s) descartadas, nao convertidas em 0.", nivel))
+  }
+  if (nivel == "uf") {
+    desc <- c("D-004" = "apenas autoconsumo: 2022 (copia de 2019 na fonte) descartado em 4 series",
+              "D-005" = "Lista TIP: % de 2022 das UFs (escala errada na fonte) descartado em 4 faixas",
+              "D-006" = "economicas ou autoconsumo 16-17 anos: % de 2017 (~2x o esperado) descartado")
+    for (j in seq_len(nrow(.abq_exclusoes))) {
+      ex <- .abq_exclusoes[j, ]
+      if (.abq_flag(ex$env, "true")) {
+        .abq_log(sprintf("DECISAO REVISAVEL %s (2026-11-12): %s (%d valores). Revogar: %s=false.", ex$id, desc[[ex$id]], n_excl[[ex$id]], ex$env))
+      } else {
+        .abq_log(sprintf("%s REVOGADA por variavel de ambiente %s: dados mantidos como vieram da fonte.", ex$id, ex$env))
+      }
+    }
   }
   if (nivel == "municipio") {
     .abq_log(sprintf("DECISAO REVISAVEL D-003 (2026-11-11): taxa municipal de mortalidade por saneamento limitada a ate %d (%d valores posteriores descartados; escala inconsistente na fonte). Revogar: AURORA_MORT_SANEA_TAXA_MUN_ANO_MAX=2025.", ano_max_taxa_mun, n_taxa_cortada))

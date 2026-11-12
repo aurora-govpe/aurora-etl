@@ -828,7 +828,7 @@ df_indicadores_empilhados <- bind_rows(
     nm_municipio = str_remove(nm_municipio, " \\(PE\\)| - [A-Z]{2}$"),
     indicador = case_when(
       # já vem em % (0 a 100): não aplicar a conversão de proporção (0-1) para %
-      sigla_indicador == "peso_abaixo_5_10_pct" ~ indicador,
+      sigla_indicador %in% c("peso_abaixo_5_10_pct", "ocup_agro_ate14_pct") ~ indicador,
       tipo == "percentual" & suppressWarnings(as.numeric(indicador)) > 0 & suppressWarnings(as.numeric(indicador)) <= 1 ~ as.character(as.numeric(indicador) * 100),
       sigla_indicador %in% c("pib_pct", "pct_agua_rede", "pct_esgoto_rede") ~ as.character(round(as.numeric(indicador), 2)),
       TRUE ~ indicador
