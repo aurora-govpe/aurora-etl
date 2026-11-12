@@ -74,6 +74,7 @@ caminho_agua            <- file.path(DIR_RAW_AURORA, "vulnerabilidade/relatorio_
 caminho_esgoto          <- file.path(DIR_RAW_AURORA, "vulnerabilidade/relatorio_brasil_esgoto_sinisa.xlsx")
 caminho_agricultura     <- file.path(DIR_RAW_AURORA, "agricultura/dados_pam_uf_2020_2025.xlsx")
 caminho_suape           <- file.path(DIR_RAW_AURORA, "aeroportuaria/porto_suape_carga.xlsx")
+caminho_passageiros           <- file.path(DIR_RAW_AURORA, "aeroportuaria/df_passageiros_uf_ano.xlsx")
 
 # ------------------------------------------------------------------------------
 # 4. DICIONÁRIOS E FUNÇÕES AUXILIARES
@@ -879,6 +880,46 @@ extrair_suape_uf <- function() {
 df_suape_ufs <- extrair_suape_uf()
 cli_alert_success("Suape (Carga Bruta) processada.")
 
+
+## 5.15 Passageiros ----
+extrair_passageiros_uf <- function() {
+  if (!file.exists(caminho_passageiros)) {
+    cli_alert_warning("Arquivo de Suape ausente em {.path {caminho_passageiros}}")
+    return(tibble())
+  }
+  
+  df_raw <- suppressWarnings(
+    suppressMessages(
+      read_excel(caminho_passageiros, col_types = "text")
+    )
+  )
+  
+  df_raw %>%
+    clean_names() %>%
+    mutate(
+      sg_uf = as.character(uf),
+      ano       = as.numeric(ano),
+      valor_num = as.numeric(total_geral)
+    ) %>%
+    filter(!is.na(valor_num)) %>%
+    # Agrupamento por UF e Ano para somar os valores (ex: dados mensais ou por operação)
+    group_by(sg_uf, ano) %>%
+    summarise(
+      valor_total = sum(valor_num, na.rm = TRUE),
+      .groups     = "drop"
+    ) %>%
+    inner_join(tb_ufs %>% select(cod_uf, sg_uf, nm_uf) %>% distinct(), by = "sg_uf") %>%
+    mutate(
+      sigla_indicador = "movimentacao_aero",
+      mes_referencia  = NA_character_,
+      indicador       = as.character(round(valor_total, 2))
+    ) %>%
+    filter(!indicador %in% c("-", "ND", "nan", "NA", NA)) %>%
+    select(cod_uf, sg_uf, nm_uf, ano, indicador, mes_referencia, sigla_indicador)
+}
+
+df_passageiros_ufs <- extrair_passageiros_uf()
+cli_alert_success("Aeroportos (Passageiros) processada.")
 # ------------------------------------------------------------------------------
 # 6. CONSOLIDAÇÃO FINAL E ENRIQUECIMENTO DE METADADOS
 # ------------------------------------------------------------------------------
@@ -905,6 +946,7 @@ df_indicadores_ufs <- bind_rows(
   df_esgoto_ufs,
   df_agricultura_ufs,
   df_suape_ufs,
+  df_passageiros_ufs
 ) %>%
   left_join(meta_indicadores, by = "sigla_indicador") %>%
   select(

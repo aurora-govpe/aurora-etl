@@ -39,6 +39,8 @@ padronizar_municipio <- function(x) {
 # ------------------------------------------------------------------------------
 # PREPARAÇÃO DO DICIONÁRIO DE-PARA (IBGE7)
 # ------------------------------------------------------------------------------
+ficha_municipal <- arrow::read_parquet("C:/dados/aurora/parquet/ficha_municipal.parquet")
+
 de_para_ibge <- ficha_municipal %>%
   select(ibge7, municipio) %>%
   distinct(ibge7, .keep_all = TRUE) %>%
