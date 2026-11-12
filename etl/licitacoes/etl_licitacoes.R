@@ -377,8 +377,11 @@ dados_licitacoes2 <- dados_licitacoes %>%
 
 # 1. Salva em RDS (backup e compatibilidade)
 saveRDS(dados_licitacoes2, file.path(DIR_SAIDA, "dados_licitacoes.rds"))
+
 saveRDS(dados_lotes_itens, file.path(DIR_SAIDA, "dados_lotes_itens.rds"))
+
 saveRDS(dados_pncp, file.path(DIR_SAIDA, "dados_pncp.rds"))
+
 saveRDS(dados_item_pncp, file.path(DIR_SAIDA, "dados_item_pncp.rds"))
 
 dados_carga <- tibble::tibble(
@@ -388,9 +391,13 @@ saveRDS(dados_carga, file.path(DIR_SAIDA, "dados_carga.rds"))
 
 # 2. Salva em JSON (Backend Go ultraleve Aurora)
 cli::cli_alert_info("Exportando dados em formato JSON para o backend Go...")
+
 jsonlite::write_json(dados_licitacoes2, file.path(DIR_SAIDA, "dados_licitacoes.json"), auto_unbox = TRUE)
+
 jsonlite::write_json(dados_item_pncp, file.path(DIR_SAIDA, "dados_item_pncp.json"), auto_unbox = TRUE)
+
 jsonlite::write_json(dados_carga, file.path(DIR_SAIDA, "dados_carga.json"), auto_unbox = TRUE)
+
 cli::cli_alert_success(paste("Arquivos JSON e RDS gerados com sucesso em:", DIR_SAIDA))
 
 dados_licitacoes2 %>% count(is_atrasado, status_prazo, is.na(dias_desde_analise_sei))
