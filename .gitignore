@@ -7,6 +7,8 @@
 # Arquivos e pastas de dados (Regra de Ouro: Dados NUNCA entram no Git)
 data/
 **/data/
+# Planilhas-fonte (bases) trazidas pela usuária: ficam só locais
+docs/
 *.rds
 *.parquet
 *.qs

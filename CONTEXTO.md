@@ -105,6 +105,16 @@ Arquivo de contexto das alterações feitas com o Claude neste repositório. Atu
 - Branch `feat/indicador-obitos-maternos-cor-raca`, **empilhada** sobre `feat/indicador-peso-ideal` (precisa do logger e deste arquivo, que só existem naquela PR).
 - Exige 7 linhas novas em `Sheet1` e 7 em `UFs` da `lista de indicadores.xlsx` (backup `lista de indicadores.BACKUP_2026-11-10.xlsx`).
 
+## Pasta `docs/` — planilhas-fonte (2026-11-12)
+- A partir de 2026-11-12 a usuária guarda as planilhas-fonte (bases) em `docs/` (antes ficavam em Downloads). A pasta está no `.gitignore`, então nada dela vai ao Git.
+- Em toda tarefa, listar o `docs/` e comparar com as bases já processadas (`ABRINQ_ARQUIVOS`, `R/obitos_maternos.R`, peso ideal) para achar arquivos novos ou alterados.
+- O ETL continua lendo de `C:\dados\dados brutos\aurora\<tema>`. Ao processar uma base, copiar do `docs/` para lá; os caminhos do código não mudam.
+
+## Migração de máquina (2026-11-13)
+- A usuária vai trocar de computador e continuar a missão na máquina nova. O kit de migração está em `Documents\kit_migracao_aurora\` (instruções em `LEIA-ME.md` dentro do kit).
+- Fora do Git e essenciais: `lista de indicadores.xlsx` (com as 76 linhas novas: 2 + 7 + 40 + 27), `docs/`, textos das PRs e memória do Claude Code. As saídas em `C:\dados\aurora` podem ser regeneradas pelo ETL, e os brutos completos (`C:\dados\dados brutos\aurora`, ~3,6 GB) devem ser copiados à parte.
+- Estado na troca: 4 PRs empilhadas (peso ideal → óbitos maternos → lote Abrinq 1 → lote trabalho infantil), nenhuma na `main` (c8a118a em 2026-11-12). Branch de trabalho: `feat/lote-abrinq-trabalho-infantil`.
+
 ## Pendências / perguntas em aberto
 - Detalhes da planilha e do indicador (ver acima).
 - Destino: arquivo em `C:/dados/aurora` ou bucket S3?
