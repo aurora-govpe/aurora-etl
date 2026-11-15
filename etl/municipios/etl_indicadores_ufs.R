@@ -16,6 +16,7 @@ library(janitor)
 library(tidyverse)
 library(readr)
 library(cli)
+library(jsonlite)
 
 # ------------------------------------------------------------------------------
 # 2. RESOLUÇÃO DE DIRETÓRIOS E AMBIENTE (ESTRATÉGIA MODULAR AURORA)
@@ -69,6 +70,7 @@ caminho_cirurgias       <- file.path(DIR_RAW_AURORA, "saude/Procedimentos Cirúr
 caminho_indicador       <- file.path(DIR_RAW_AURORA, "indicadores/lista de indicadores.xlsx")
 caminho_seguranca       <- file.path(DIR_RAW_AURORA, "seguranca/df_seguranca_publica_forum_nacional.xlsx")
 caminho_mapbiomas       <- file.path(DIR_RAW_AURORA, "meio ambiente/indicadores_mapbiomas.parquet")
+
 caminho_energia         <- file.path(DIR_RAW_AURORA, "energia/dados_potencia_energia_uf.xlsx")
 caminho_agua            <- file.path(DIR_RAW_AURORA, "vulnerabilidade/relatorio_brasil_agua_sinisa.xlsx")
 caminho_esgoto          <- file.path(DIR_RAW_AURORA, "vulnerabilidade/relatorio_brasil_esgoto_sinisa.xlsx")
@@ -920,6 +922,8 @@ extrair_passageiros_uf <- function() {
 
 df_passageiros_ufs <- extrair_passageiros_uf()
 cli_alert_success("Aeroportos (Passageiros) processada.")
+
+
 # ------------------------------------------------------------------------------
 # 6. CONSOLIDAÇÃO FINAL E ENRIQUECIMENTO DE METADADOS
 # ------------------------------------------------------------------------------
@@ -959,9 +963,7 @@ df_indicadores_ufs <- bind_rows(
     indicador,
     mes_referencia,
     sigla_indicador,
-    grupo,
-    tipo,
-    polaridade
+    any_of(c("eixo", "grupo", "subdimensao", "tipo", "natureza", "polaridade", "fonte", "hiperlink"))
   ) %>%
   arrange(sigla_indicador, cod_uf, ano)
 
@@ -985,4 +987,120 @@ cli_alert_success("Arquivos exportados com sucesso:")
 cli_alert_info("Parquet: {.path {caminho_parquet_sub}}")
 cli_alert_info("RDS:     {.path {caminho_rds_root}}")
 
-df_indicadores_ufs %>% View()
+
+# ------------------------------------------------------------------------------
+# 7.1 GERAÇÃO E EXPORTAÇÃO DE METADADOS (JSON PARA FRONTEND)
+# ------------------------------------------------------------------------------
+cli_alert_info("Gerando dicionário JSON de metadados dos indicadores...")
+
+# Normaliza possíveis typos nos nomes das colunas vindas do Excel
+meta_normalizado <- meta_indicadores %>%
+  rename_with(~ case_when(
+    . == "direcao_desejave"    ~ "direcao_desejavel",
+    . == "limpacto_planeamento" ~ "impacto_planejamento",
+    TRUE ~ .
+  ))
+
+cols_esperadas <- c(
+  "sigla_indicador", "nm_indicador", "nm_fantasia",
+  "fonte", "hiperlink", "grupo", "eixo", "tipo", "polaridade",
+  "subdimensao", "natureza", "formula_katex",
+  "interpretacao", "limiar_corte", "direcao_desejavel", "impacto_planejamento"
+)
+
+for (col in cols_esperadas) {
+  if (!col %in% names(meta_normalizado)) {
+    meta_normalizado[[col]] <- NA_character_
+  }
+}
+
+df_meta_limpo <- meta_normalizado %>%
+  filter(!is.na(sigla_indicador), str_trim(sigla_indicador) != "") %>%
+  mutate(across(all_of(cols_esperadas), ~ na_if(str_trim(as.character(.)), "")))
+
+lista_metadados <- list()
+
+for (i in seq_len(nrow(df_meta_limpo))) {
+  row <- df_meta_limpo[i, ]
+  
+  # Sub-objeto referencia_analise (mantém compatibilidade com seu JS atual)
+  ref_analise <- list(
+    interpretacao        = row$interpretacao,
+    limiar_corte         = row$limiar_corte,
+    direcao_desejavel    = row$direcao_desejavel,
+    impacto_planejamento = row$impacto_planejamento
+  ) %>%
+    discard(is.na)
+  
+  # Objeto completo com todos os metadados da planilha
+  item_meta <- list(
+    cd_indicador       = row$sigla_indicador,
+    nm_indicador       = row$nm_indicador,
+    nm_fantasia        = row$nm_fantasia,
+    eixo               = row$eixo,
+    grupo              = row$grupo,
+    subdimensao        = row$subdimensao,
+    tipo               = row$tipo,
+    natureza           = row$natureza,
+    polaridade         = row$polaridade,
+    fonte              = row$fonte,
+    hiperlink          = row$hiperlink,
+    formula_katex      = row$formula_katex,
+    referencia_analise = ref_analise
+  ) %>%
+    discard(~ is.null(.) || (length(.) == 1 && is.na(.)))
+  
+  # 1. Indexa pela sigla (ex: "tx_mvi")
+  lista_metadados[[row$sigla_indicador]] <- item_meta
+  
+  # 2. Indexa pelo nome oficial (ex: "Educação"), se diferente da sigla
+  if (!is.na(row$nm_indicador) && row$nm_indicador != row$sigla_indicador) {
+    lista_metadados[[row$nm_indicador]] <- item_meta
+  }
+  
+  # 3. Indexa também pelo nome fantasia, caso exista e seja diferente dos anteriores
+  if (!is.na(row$nm_fantasia) && 
+      row$nm_fantasia != row$sigla_indicador && 
+      (is.na(row$nm_indicador) || row$nm_fantasia != row$nm_indicador)) {
+    lista_metadados[[row$nm_fantasia]] <- item_meta
+  }
+}
+
+# Garante que a subpasta json/ exista antes de salvar
+caminho_json_meta <- file.path(DIR_OUT_AURORA, "json", "metadados_indicadores_ufs.json")
+dir.create(dirname(caminho_json_meta), recursive = TRUE, showWarnings = FALSE)
+
+jsonlite::write_json(
+  x          = lista_metadados,
+  path       = caminho_json_meta,
+  auto_unbox = TRUE,
+  pretty     = TRUE
+)
+
+cli_alert_success("Metadados JSON exportados com sucesso em: {.path {caminho_json_meta}}")
+
+
+# # Exportação para Google Sheets ----
+cli::cli_alert_info("Iniciando exportação para o Google Sheets...")
+
+# 1. Autenticação via Service Account (padrão DIR_RAW_AURORA)
+google_token_path <- file.path(DIR_RAW_AURORA, "r-sheets-hugo-0788cc358cb5.json")
+
+if (file.exists(google_token_path)) {
+  googlesheets4::gs4_auth(path = google_token_path)
+} else {
+  cli::cli_warn("Token JSON não encontrado em {.path {google_token_path}}. Tentando autenticação padrão...")
+  googlesheets4::gs4_auth()
+}
+
+# 2. ID da Planilha de destino
+sheet_id_destino <- "1UpOV_rqZWU19eNzA0B1KyqFisAxMR1UhCqN6eMchGQo"
+
+# 3. Escrita da base consolidada na primeira aba (gid = 0)
+googlesheets4::sheet_write(
+  data  = df_indicadores_ufs,
+  ss    = sheet_id_destino,
+  sheet = 1
+)
+
+cli::cli_alert_success("Base {.val df_indicadores_ufs} exportada com sucesso para o Google Sheets!")
