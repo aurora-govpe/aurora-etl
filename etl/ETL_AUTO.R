@@ -31,7 +31,9 @@ rotinas <- list(
     'etl_05_iniciativas_join.R',
     'fiscal/etl_emendas.R',
     'fiscal/etl_op_cred.R',
-    'fiscal/etl_execucao_bdpe.R'
+    'fiscal/etl_execucao_bdpe.R', 
+    'fiscal/etl_liquidacao_bdpe_atual.R',
+    'fiscal/etl_liquidacao_bdpe_geral.R'
     # 'fiscal/etl_execucao_IGPE.R',
     # 'fiscal/etl_execucao_bdpe_IGPE.R'
     
@@ -42,6 +44,7 @@ rotinas <- list(
   semanal = c(
     'rpa/rpa_emendas.py',
     'rpa/rpa_cadunico.py',
+    'etl_vulnerabilidade_social.R',
     'etl_cozinhas.R',
     'R/gerador_pdfs.R',
     'mulungu/ETL_AUTO_MULUNGU.R'
@@ -52,6 +55,8 @@ rotinas <- list(
     'rpa/rpa_compesa.py',
     'etl/rpa/rpa_anac_dados_estatisticos.py',
     'etl_pac.R',
+    'comex/etl_comex.R',
+    'rais/etl_rais_tecnologia.R',
     'municipios/etl_mvi_cvp_muni.R',
     'municipios/etl_caracter_mun.R',
     'municipios/etl_ficha_municipal.R',
@@ -70,12 +75,12 @@ rotinas <- list(
   
   # ROTINAS ANUAIS / SOB DEMANDA
   anual = c(
-    'etl_agricultura_sidra.R',
+    'meio ambiente/etl_agricultura_sidra.R',
     'municipios/etl_indicadores_ufs.R',
-    'municipios/etl_urbanizacao.R',
     'municipios/etl_indicadores_regioes_br.R',
+    'municipios/etl_urbanizacao.R',
     'municipios/etl_demografia_pe.R',
-    'municipios/etl_vulnerabilidade_social.R'
+    'municipios/etl_indicadores_ibge_sidra.R'
   ),
   
   # ROTINAS DE SERVIDOR / ESPECIAIS
