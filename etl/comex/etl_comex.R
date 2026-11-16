@@ -1,4 +1,4 @@
-﻿library(arrow)
+library(arrow)
 library(comexr)
 library(geobr)
 library(sf)
