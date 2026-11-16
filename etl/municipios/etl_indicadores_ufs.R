@@ -1081,26 +1081,26 @@ cli_alert_success("Metadados JSON exportados com sucesso em: {.path {caminho_jso
 
 
 # # Exportação para Google Sheets ----
-cli::cli_alert_info("Iniciando exportação para o Google Sheets...")
-
-# 1. Autenticação via Service Account (padrão DIR_RAW_AURORA)
-google_token_path <- file.path(DIR_RAW_AURORA, "r-sheets-hugo-0788cc358cb5.json")
-
-if (file.exists(google_token_path)) {
-  googlesheets4::gs4_auth(path = google_token_path)
-} else {
-  cli::cli_warn("Token JSON não encontrado em {.path {google_token_path}}. Tentando autenticação padrão...")
-  googlesheets4::gs4_auth()
-}
-
-# 2. ID da Planilha de destino
-sheet_id_destino <- "1UpOV_rqZWU19eNzA0B1KyqFisAxMR1UhCqN6eMchGQo"
-
-# 3. Escrita da base consolidada na primeira aba (gid = 0)
-googlesheets4::sheet_write(
-  data  = df_indicadores_ufs,
-  ss    = sheet_id_destino,
-  sheet = 1
-)
-
-cli::cli_alert_success("Base {.val df_indicadores_ufs} exportada com sucesso para o Google Sheets!")
+# cli::cli_alert_info("Iniciando exportação para o Google Sheets...")
+# 
+# # 1. Autenticação via Service Account (padrão DIR_RAW_AURORA)
+# google_token_path <- file.path(DIR_RAW_AURORA, "r-sheets-hugo-0788cc358cb5.json")
+# 
+# if (file.exists(google_token_path)) {
+#   googlesheets4::gs4_auth(path = google_token_path)
+# } else {
+#   cli::cli_warn("Token JSON não encontrado em {.path {google_token_path}}. Tentando autenticação padrão...")
+#   googlesheets4::gs4_auth()
+# }
+# 
+# # 2. ID da Planilha de destino
+# sheet_id_destino <- "1UpOV_rqZWU19eNzA0B1KyqFisAxMR1UhCqN6eMchGQo"
+# 
+# # 3. Escrita da base consolidada na primeira aba (gid = 0)
+# googlesheets4::sheet_write(
+#   data  = df_indicadores_ufs,
+#   ss    = sheet_id_destino,
+#   sheet = 1
+# )
+# 
+# cli::cli_alert_success("Base {.val df_indicadores_ufs} exportada com sucesso para o Google Sheets!")
