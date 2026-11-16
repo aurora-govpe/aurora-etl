@@ -50,7 +50,23 @@ dir.create(DIR_OUT_AURORA,  recursive = TRUE, showWarnings = FALSE)
 dir.create(dir_parquet_out, recursive = TRUE, showWarnings = FALSE)
 
 # ------------------------------------------------------------------------------
-# 3. MAPEAMENTO DE CAMINHOS DE ENTRADA (DIR_RAW_AURORA)
+# 3. AUTENTICAÇÃO GOOGLE
+# ------------------------------------------------------------------------------
+auth_path <- if (file.exists(file.path(DIR_RAW_AURORA, "r-sheets-hugo-0788cc358cb5.json"))) {
+  file.path(DIR_RAW_AURORA, "r-sheets-hugo-0788cc358cb5.json")
+} else {
+  "data/r-sheets-hugo-0788cc358cb5.json"
+}
+
+if (file.exists(auth_path)) {
+  drive_auth(path = auth_path)
+  cli_alert_success("Autenticação Google realizada via {.path {auth_path}}.")
+} else {
+  cli_alert_warning("Credencial do Google não encontrada em: {.path {auth_path}}")
+}
+
+# ------------------------------------------------------------------------------
+# 4. MAPEAMENTO DE CAMINHOS DE ENTRADA (DIR_RAW_AURORA)
 # ------------------------------------------------------------------------------
 caminho_ideb            <- file.path(DIR_RAW_AURORA, "educacao/IDEB/divulgacao_regioes_ufs_ideb_2025.xlsx")
 caminho_creches         <- file.path(DIR_RAW_AURORA, "educacao/infantil/Taxa bruta de matrículas em creches.xlsx")
@@ -67,7 +83,7 @@ caminho_consultas       <- file.path(DIR_RAW_AURORA, "saude/Consultas Médicas p
 caminho_exames          <- file.path(DIR_RAW_AURORA, "saude/Exames (Procedimentos com Finalidade Diagnóstica) por tipo de gestão.csv")
 caminho_cirurgias       <- file.path(DIR_RAW_AURORA, "saude/Procedimentos Cirúrgicos por tipo de gestão.csv")
 
-caminho_indicador       <- file.path(DIR_RAW_AURORA, "indicadores/lista de indicadores.xlsx")
+# caminho_indicador       <- file.path(DIR_RAW_AURORA, "indicadores/lista de indicadores.xlsx")
 caminho_seguranca       <- file.path(DIR_RAW_AURORA, "seguranca/df_seguranca_publica_forum_nacional.xlsx")
 caminho_mapbiomas       <- file.path(DIR_RAW_AURORA, "meio ambiente/indicadores_mapbiomas.parquet")
 
@@ -77,6 +93,12 @@ caminho_esgoto          <- file.path(DIR_RAW_AURORA, "vulnerabilidade/relatorio_
 caminho_agricultura     <- file.path(DIR_RAW_AURORA, "agricultura/dados_pam_uf_2020_2025.xlsx")
 caminho_suape           <- file.path(DIR_RAW_AURORA, "aeroportuaria/porto_suape_carga.xlsx")
 caminho_passageiros           <- file.path(DIR_RAW_AURORA, "aeroportuaria/df_passageiros_uf_ano.xlsx")
+
+## Lista de indicadores ----
+url_lista <- "https://docs.google.com/spreadsheets/d/1WNuK75MyAHYofzvd6wkiVIG-FHpwqruIDyUMtkfBlOI/edit?gid=1805893996#gid=1805893996"
+caminho_indicador <- tempfile(fileext = ".xlsx")
+
+drive_download(file = googledrive::as_id(url_lista), path = caminho_indicador, overwrite = TRUE)
 
 # ------------------------------------------------------------------------------
 # 4. DICIONÁRIOS E FUNÇÕES AUXILIARES

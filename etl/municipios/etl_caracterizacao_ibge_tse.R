@@ -432,13 +432,15 @@ saveRDS(df_final_novos, path_rds_extra)
 arrow::write_parquet(df_final_novos, path_pqt_extra, compression = "snappy")
 message(sprintf("Salvo arquivo específico em: %s", path_pqt_extra))
 
-# B) Integração no df_indicadores.parquet e df_indicadores_empilhados.rds oficiais
+## B) Integração no df_indicadores.parquet e df_indicadores_empilhados.rds oficiais
 path_pqt_oficial <- file.path(DIR_OUT_AURORA, "parquet/df_indicadores.parquet")
 path_rds_oficial <- file.path(DIR_OUT_AURORA, "df_indicadores_empilhados.rds")
 
 if (file.exists(path_pqt_oficial)) {
   message("Integrando indicadores ao parquet oficial existente...")
-  df_oficial_antigo <- arrow::read_parquet(path_pqt_oficial)
+  
+  # 1. Lê com mmap = FALSE para não travar o arquivo no Windows
+  df_oficial_antigo <- arrow::read_parquet(path_pqt_oficial, mmap = FALSE)
   
   # Remove versões anteriores destas mesmas siglas para atualização limpa
   siglas_novas <- unique(df_final_novos$sigla_indicador)
@@ -447,7 +449,19 @@ if (file.exists(path_pqt_oficial)) {
     filter(!sigla_indicador %in% siglas_novas) %>%
     bind_rows(df_final_novos)
   
-  arrow::write_parquet(df_oficial_atualizado, path_pqt_oficial, compression = "snappy")
+  # Libera o objeto antigo da memória antes de gravar
+  rm(df_oficial_antigo)
+  gc(verbose = FALSE)
+  
+  # 2. Gravação atômica via arquivo temporário para evitar lock no Windows
+  path_pqt_tmp <- paste0(path_pqt_oficial, ".tmp")
+  arrow::write_parquet(df_oficial_atualizado, path_pqt_tmp, compression = "snappy")
+  
+  if (!file.rename(path_pqt_tmp, path_pqt_oficial)) {
+    file.copy(path_pqt_tmp, path_pqt_oficial, overwrite = TRUE)
+    unlink(path_pqt_tmp)
+  }
+  
   message(sprintf("Parquet oficial atualizado com sucesso (%d linhas no total).", nrow(df_oficial_atualizado)))
   
   if (file.exists(path_rds_oficial)) {
