@@ -54,9 +54,31 @@
 # a de estabelecimentos agropecuários traz municípios e UFs (só 2017). O "%" dos
 # arquivos "Lista TIP" é composição: nas faixas etárias, % do total em atividades da
 # Lista TIP; no total 5-17, % dos que estão em trabalho infantil.
+#
+# --- Lote 3: Gini, medidas socioeducativas, casamentos e Lista TIP 14-17 anos
+#     (usuária Kattine Costa Pedrosa, 2026-11-16) ---
+# D-007  Casamentos de meninas: o "-" vale 0 casamento (municípios e UFs), nas 3
+#        abas. Evidência: em PE o "-" aparece em no máximo 1 município por ano na
+#        aba total e a soma dos demais municípios bate com a UF em todos os 22
+#        anos (2003-2024). Revogar: AURORA_CASAMENTOS_TRACO_COMO_ZERO=false.
+#
+# Notas (não são decisões):
+#  - Medidas socioeducativas: o "-" é descartado (anos sem levantamento, não 0;
+#    ex.: "Internação sanção" só tem 2023).
+#  - Gini: só UFs; grupo "economia", tipo "índice" (valores 0,4-0,6, fora da regra
+#    0-1 -> % do consolidado municipal, que só vale para "percentual").
+#  - Lista TIP 14-17 anos (2 planilhas): séries TRIMESTRAIS (1T2012 a 2T2026),
+#    carregadas como vieram: `ano` + `mes_referencia` = "T1".."T4". Só UFs.
+#  - Brasil e regiões (código IBGE de 1 dígito) ficam de fora, como nos lotes
+#    anteriores.
 # ==============================================================================
 
 ABRINQ_ARQUIVOS <- c(
+  gini       = "economia/Coeficiente de Gini de desigualdade.xlsx",
+  liberdade  = "cidadania/Número de adolescentes cumprindo medidas de privação e de restrição de liberdade.xlsx",
+  casamentos = "cidadania/Número de casamentos registrados crianças e adolescentes do sexo feminino.xlsx",
+  tip_ocup   = "cidadania/Proporção da população ocupada de 14 a 17 anos de idade desempenhando atividades identificadas às piores formas do trabalho infantil (Lista TIP).xlsx",
+  ti_ocup    = "cidadania/Proporção de adolescentes de 14 a 17 anos de idade em situação de trabalho infantil em relação à população ocupada desta faixa etária.xlsx",
   acid_idade = "cidadania/Notificações acidentes de trabalho entre crianças e adolescentes entre 5 e 17 anos de idade.xlsx",
   acid_cor   = "cidadania/Notificações de acidentes de trabalho entre crianças e adolescentes entre 5 e 17 anos de idade segundo cor_raça.xlsx",
   acid_evol  = "cidadania/Notificações de acidentes de trabalho entre crianças e adolescentes entre 5 e 17 anos de idade segundo evolução dos casos.xlsx",
@@ -78,6 +100,16 @@ ABRINQ_ARQUIVOS <- c(
   stringsAsFactors = FALSE
 )
 
+# Decisões "-" = 0: a coluna `traco_zero` do catálogo guarda o nome da variável de
+# ambiente que revoga a decisão (NA = o "-" é descartado).
+.abq_traco_decisoes <- data.frame(
+  env  = c("AURORA_ACIDENTES_TRABALHO_TRACO_COMO_ZERO", "AURORA_CASAMENTOS_TRACO_COMO_ZERO"),
+  id   = c("D-002", "D-007"),
+  data = c("2026-11-11", "2026-11-16"),
+  desc = c("planilhas de acidentes de trabalho", "planilhas de casamentos de meninas"),
+  stringsAsFactors = FALSE
+)
+
 .abq_catalogo <- function() {
   acid <- function(arquivo, rotulo, sigla, nm, fantasia) {
     data.frame(arquivo = arquivo, rotulo = rotulo, serie = "valor",
@@ -85,7 +117,7 @@ ABRINQ_ARQUIVOS <- c(
                nm_indicador = paste0("Acidentes de trabalho (5 a 17 anos) - ", nm),
                nm_fantasia = paste0("Acidentes de trabalho 5-17 anos (", fantasia, ")"),
                grupo = "cidadania", tipo = "absoluto", polaridade = "negativa",
-               traco_zero = TRUE, stringsAsFactors = FALSE)
+               traco_zero = "AURORA_ACIDENTES_TRABALHO_TRACO_COMO_ZERO", stringsAsFactors = FALSE)
   }
   mort <- function(rotulo, sigla, faixa, taxa = TRUE) {
     f <- function(serie, pre, nm_pre, tipo, fan_pre) data.frame(
@@ -93,7 +125,7 @@ ABRINQ_ARQUIVOS <- c(
       sigla_indicador = paste0("mort_sanea_", pre, "_", sigla),
       nm_indicador = paste0("Mortalidade por saneamento inadequado - ", nm_pre, " (", faixa, ")"),
       nm_fantasia = paste0("Mort. saneamento inadequado: ", fan_pre, " (", faixa, ")"),
-      grupo = "saúde", tipo = tipo, polaridade = "negativa", traco_zero = FALSE, stringsAsFactors = FALSE)
+      grupo = "saúde", tipo = tipo, polaridade = "negativa", traco_zero = NA_character_, stringsAsFactors = FALSE)
     rbind(if (taxa) f("taxa", "taxa", "Taxa por 100 mil hab.", "índice", "taxa"),
           f("abs", "abs", "Nº de óbitos", "absoluto", "nº"))
   }
@@ -101,7 +133,7 @@ ABRINQ_ARQUIVOS <- c(
   ti <- function(arquivo, rotulo, serie, sigla, nm, fantasia, tipo) data.frame(
     arquivo = arquivo, rotulo = rotulo, serie = serie, sigla_indicador = sigla,
     nm_indicador = nm, nm_fantasia = fantasia, grupo = "cidadania", tipo = tipo,
-    polaridade = "negativa", traco_zero = FALSE, stringsAsFactors = FALSE)
+    polaridade = "negativa", traco_zero = NA_character_, stringsAsFactors = FALSE)
   ti_faixa <- function(arquivo, pre, nm_base, fan_base, rotulo, sigla, faixa, pct_txt, serie_abs = "abs", com_pct = TRUE) {
     rbind(
       if (com_pct) ti(arquivo, rotulo, "taxa", paste0(pre, "_", sigla, "_pct"),
@@ -134,7 +166,47 @@ ABRINQ_ARQUIVOS <- c(
        "Ocupados em estabelecimentos agropecuários até 14 anos (nº)", "absoluto")
   )
 
+  # --- Lote 3 (2026-11-16): Gini, medidas socioeducativas, casamentos, Lista TIP 14-17 (trimestral) ---
+  simples <- function(arquivo, rotulo, serie, sigla, nm, fantasia, grupo, tipo, traco_zero = NA_character_) data.frame(
+    arquivo = arquivo, rotulo = rotulo, serie = serie, sigla_indicador = sigla,
+    nm_indicador = nm, nm_fantasia = fantasia, grupo = grupo, tipo = tipo,
+    polaridade = "negativa", traco_zero = traco_zero, stringsAsFactors = FALSE)
+  socioedu <- function(rotulo, sigla, nm, fantasia) simples(
+    "liberdade", rotulo, "valor", paste0("socioedu_medida_", sigla),
+    paste0("Adolescentes em medidas socioeducativas de privação/restrição de liberdade - ", nm),
+    paste0("Adolescentes privados de liberdade (", fantasia, ")"), "cidadania", "absoluto")
+  casam <- function(rotulo, sigla, nm, fantasia) simples(
+    "casamentos", rotulo, "valor", paste0("casamento_fem_", sigla),
+    paste0("Casamentos registrados de crianças e adolescentes do sexo feminino - ", nm),
+    paste0("Casamentos de meninas (", fantasia, ")"), "cidadania", "absoluto",
+    traco_zero = "AURORA_CASAMENTOS_TRACO_COMO_ZERO")                                   # D-007
+  trimestral <- function(arquivo, rotulo, pre, nm_base, fan_base, pct_txt) rbind(
+    simples(arquivo, rotulo, "taxa", paste0(pre, "_pct"), paste0(nm_base, " - ", pct_txt),
+            paste0(fan_base, " (%)"), "cidadania", "percentual"),
+    simples(arquivo, rotulo, "abs", paste0(pre, "_abs"), paste0(nm_base, " - Nº de pessoas"),
+            paste0(fan_base, " (nº)"), "cidadania", "absoluto"))
+  lote3 <- rbind(
+    simples("gini", "^Coeficiente Gini", "valor", "gini_desigualdade",
+            "Coeficiente de Gini de desigualdade", "Coeficiente de Gini", "economia", "índice"),
+    socioedu("/ Internação$",            "internacao",        "Internação",            "internação"),
+    socioedu("/ Internação provisória$", "intern_provisoria", "Internação provisória", "internação provisória"),
+    socioedu("/ Semiliberdade$",         "semiliberdade",     "Semiliberdade",         "semiliberdade"),
+    socioedu("/ Internação Sanção$",     "intern_sancao",     "Internação sanção",     "internação sanção"),
+    socioedu("^Outros$",                 "outros",            "Outros",                "outros"),
+    socioedu("^Total de adolescentes",   "total",             "Total",                 "total"),
+    casam("^Total de casamentos de meninas menores de 19 anos", "ate19_total", "Total de meninas menores de 19 anos", "total, menores de 19 anos"),
+    casam("^15 a 19 anos$",       "15_19", "15 a 19 anos",       "15 a 19 anos"),
+    casam("^Menores de 15 anos$", "ate15", "Menores de 15 anos", "menores de 15 anos"),
+    trimestral("tip_ocup", "^Proporção da população ocupada de 14 a 17 anos", "tip_ocup_14_17",
+               "Ocupados de 14 a 17 anos em atividades da Lista TIP (piores formas de trabalho infantil), trimestral",
+               "Ocupados 14-17 anos em atividades da Lista TIP, trimestral", "% da população ocupada de 14 a 17 anos"),
+    trimestral("ti_ocup", "^Proporção de adolescentes de 14 a 17 anos", "ti_ocup_14_17",
+               "Adolescentes de 14 a 17 anos em situação de trabalho infantil, trimestral",
+               "Trabalho infantil 14-17 anos sobre ocupados, trimestral", "% da população ocupada de 14 a 17 anos")
+  )
+
   rbind(
+    lote3,
     ti_todos,
     acid("acid_cor",   "^Total de acidentes relacionados ao trabalho de crianças e adolescentes", "5_17_total", "Total", "total"),
     acid("acid_idade", "^5 a 9 anos de idade$",   "5_9",   "5 a 9 anos",   "5 a 9 anos"),
@@ -185,10 +257,10 @@ abrinq_lote_metadados <- function() {
 ler_abrinq_lote <- function(dir_raw, nivel = c("municipio", "uf")) {
   nivel <- match.arg(nivel)
   cat_ <- .abq_catalogo()
-  acid_traco_zero <- .abq_flag("AURORA_ACIDENTES_TRABALHO_TRACO_COMO_ZERO", "true")
   ano_max_taxa_mun <- suppressWarnings(as.numeric(Sys.getenv("AURORA_MORT_SANEA_TAXA_MUN_ANO_MAX", "2019")))
   if (is.na(ano_max_taxa_mun)) ano_max_taxa_mun <- 2019
-  n_traco <- 0L; n_taxa_cortada <- 0L
+  n_traco <- setNames(rep(0L, nrow(.abq_traco_decisoes)), .abq_traco_decisoes$env)   # D-002, D-007
+  n_taxa_cortada <- 0L
   n_excl <- setNames(rep(0L, nrow(.abq_exclusoes)), .abq_exclusoes$id)
   out <- list()
 
@@ -227,13 +299,18 @@ ler_abrinq_lote <- function(dir_raw, nivel = c("municipio", "uf")) {
 
       d <- tidyr::pivot_longer(d, cols = -(1:3), names_to = "coluna", values_to = "indicador")
       d$ano <- as.numeric(stringr::str_extract(d$coluna, "[0-9]{4}"))
-      d$serie_col <- ifelse(grepl("[(]%[)]", d$coluna), "taxa", ifelse(grepl("absoluto", d$coluna), "abs", "valor"))
+      # Colunas trimestrais ("Trimestre 1/2012" = %, "Trimestre 1/2012 (absoluto)" = nº):
+      # ano + mes_referencia = "T1".."T4"; colunas anuais ficam com mes_referencia NA.
+      d$trimestre <- stringr::str_match(d$coluna, "^Trimestre ([1-4])/")[, 2]
+      eh_abs <- grepl("absoluto", d$coluna)
+      d$serie_col <- ifelse(grepl("[(]%[)]", d$coluna) | (!is.na(d$trimestre) & !eh_abs), "taxa",
+                            ifelse(eh_abs, "abs", "valor"))
       d <- d[d$serie_col == cl$serie & !is.na(d$ano), ]
       d$indicador <- stringr::str_trim(d$indicador)
 
       eh_traco <- !is.na(d$indicador) & d$indicador == "-"
-      if (cl$traco_zero && acid_traco_zero) {
-        n_traco <- n_traco + sum(eh_traco)
+      if (!is.na(cl$traco_zero) && .abq_flag(cl$traco_zero, "true")) {             # D-002, D-007
+        n_traco[cl$traco_zero] <- n_traco[cl$traco_zero] + sum(eh_traco)
         d$indicador[eh_traco] <- "0"
       }
       d <- d[!is.na(d$indicador) & !d$indicador %in% c("-", "ND", "nan", "NA"), ]
@@ -258,16 +335,21 @@ ler_abrinq_lote <- function(dir_raw, nivel = c("municipio", "uf")) {
 
       d$sigla_indicador <- cl$sigla_indicador
       d$nm_indicador <- cl$nm_indicador
-      d$mes_referencia <- NA_character_
+      d$mes_referencia <- ifelse(is.na(d$trimestre), NA_character_, paste0("T", d$trimestre))
       out[[length(out) + 1]] <- d
     }
   }
   d <- dplyr::bind_rows(out)
 
-  if (acid_traco_zero) {
-    .abq_log(sprintf("DECISAO REVISAVEL D-002 (2026-11-11): %d celulas '-' das planilhas de acidentes de trabalho (%s) foram convertidas em 0. Revogar: AURORA_ACIDENTES_TRABALHO_TRACO_COMO_ZERO=false.", n_traco, nivel))
-  } else {
-    .abq_log(sprintf("D-002 REVOGADA por variavel de ambiente: celulas '-' das planilhas de acidentes (%s) descartadas, nao convertidas em 0.", nivel))
+  for (j in seq_len(nrow(.abq_traco_decisoes))) {                                   # D-002, D-007
+    td <- .abq_traco_decisoes[j, ]
+    if (.abq_flag(td$env, "true")) {
+      .abq_log(sprintf("DECISAO REVISAVEL %s (%s): %d celulas '-' das %s (%s) foram convertidas em 0. Revogar: %s=false.",
+                       td$id, td$data, n_traco[[td$env]], td$desc, nivel, td$env))
+    } else {
+      .abq_log(sprintf("%s REVOGADA por variavel de ambiente %s: celulas '-' das %s (%s) descartadas, nao convertidas em 0.",
+                       td$id, td$env, td$desc, nivel))
+    }
   }
   if (nivel == "uf") {
     desc <- c("D-004" = "apenas autoconsumo: 2022 (copia de 2019 na fonte) descartado em 4 series",
