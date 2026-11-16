@@ -79,7 +79,7 @@ if (!file.exists(caminho_lista_ind)) {
   cli_abort("Arquivo de lista de indicadores não encontrado: {.path {caminho_lista_ind}}")
 }
 
-lista_de_indicadores <- readxl::read_excel(caminho_lista_ind, sheet = "Sheet1")
+lista_de_indicadores <- readxl::read_excel(caminho_lista_ind, sheet = "Municípios")
 cli_alert_success("Dicionário de indicadores carregado ({nrow(lista_de_indicadores)} registros).")
 
 # ------------------------------------------------------------------------------
@@ -779,6 +779,8 @@ df_indicadores_empilhados <- bind_rows(
     grupo,
     tipo,
     polaridade,
+    fonte,
+    hiperlink,
     everything()
   )
 
@@ -832,3 +834,29 @@ arrow::write_parquet(
 cli_alert_success("Arquivo Parquet oficial salvo em {.path {caminho_parquet_out}}.")
 
 cli_alert_success("Processamento de etl_caracter_mun.R concluído com sucesso!")
+# 
+# 
+# # Exportação para Google Sheets ----
+# cli::cli_alert_info("Iniciando exportação para o Google Sheets...")
+# 
+# # 1. Autenticação via Service Account (padrão DIR_RAW_AURORA)
+# google_token_path <- file.path(DIR_RAW_AURORA, "r-sheets-hugo-0788cc358cb5.json")
+# 
+# if (file.exists(google_token_path)) {
+#   googlesheets4::gs4_auth(path = google_token_path)
+# } else {
+#   cli::cli_warn("Token JSON não encontrado em {.path {google_token_path}}. Tentando autenticação padrão...")
+#   googlesheets4::gs4_auth()
+# }
+# 
+# # 2. ID da Planilha de destino
+# sheet_id_destino <- "1swgMg9_KGHltyCoufQS5eaQXwePtfq-20fIX3eyhugc"
+# 
+# # 3. Escrita da base consolidada na primeira aba (gid = 0)
+# googlesheets4::sheet_write(
+#   data  = df_indicadores_final,
+#   ss    = sheet_id_destino,
+#   sheet = 1
+# )
+# 
+# cli::cli_alert_success("Base {.val df_indicadores_ufs} exportada com sucesso para o Google Sheets!")
