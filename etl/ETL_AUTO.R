@@ -59,6 +59,7 @@ rotinas <- list(
     'rais/etl_rais_tecnologia.R',
     'municipios/etl_mvi_cvp_muni.R',
     'municipios/etl_caracter_mun.R',
+    'municipios/etl_caracterizacao_ibge_tse.R',
     'municipios/etl_ficha_municipal.R',
     'R/gerador_pdfs.R'
   ),
