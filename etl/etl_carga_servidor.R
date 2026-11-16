@@ -43,15 +43,16 @@ arquivos_parquet <- c(
 # Aurora Iniciativas -----------------------------------------------------------
 
 "parquet/df_iniciativas.parquet",
-"parquet/df_cozinhas.parquet",
-"parquet/dados_pac.parquet",
 "parquet/dados_emendas.parquet",
-"parquet/df_pcp.parquet",
-"parquet/ficha_municipal.parquet",
+"parquet/df_cozinhas.parquet",
+# "parquet/dados_pac.parquet",
+# "parquet/df_pcp.parquet",
+# "parquet/ficha_municipal.parquet",
 
 ## Aurora Municípios - UFs ------------------------------------------------
 
-"parquet/df_indicadores_ufs.parquet"
+"parquet/df_indicadores_ufs.parquet",
+"parquet/df_indicadores.parquet"
 
 )
 

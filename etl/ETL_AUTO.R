@@ -15,7 +15,7 @@ pasta_scripts <- if (dir.exists("etl")) "etl" else "."
 
 # 2. Definição do escopo de execução -------------------------------------------
 # Opções: "diario", "semanal", "mensal", "bimestral", "anual", "legado", "servidor"
-periodicidade <- "diario"  # Altere conforme necessário
+periodicidade <- "semanal"  # Altere conforme necessário
 
 # 3. Dicionário de rotinas por periodicidade -----------------------------------
 # DICA: Use caminhos relativos à pasta_scripts (ou à raiz do projeto, se fora de etl/)
@@ -44,7 +44,7 @@ rotinas <- list(
   semanal = c(
     'rpa/rpa_emendas.py',
     'rpa/rpa_cadunico.py',
-    'etl_vulnerabilidade_social.R',
+    'municipios/etl_vulnerabilidade_social.R',
     'etl_cozinhas.R',
     'R/gerador_pdfs.R',
     'mulungu/ETL_AUTO_MULUNGU.R'
@@ -59,7 +59,8 @@ rotinas <- list(
     'rais/etl_rais_tecnologia.R',
     'municipios/etl_mvi_cvp_muni.R',
     'municipios/etl_caracter_mun.R',
-    'municipios/etl_caracterizacao_ibge_tse.R',
+    'municipios/atualizar_gestores_brasilapi.R',
+    'municipios/etl_caracterizacao_ibge_tse.R', 
     'municipios/etl_ficha_municipal.R',
     'R/gerador_pdfs.R'
   ),
