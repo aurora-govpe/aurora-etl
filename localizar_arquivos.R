@@ -1,7 +1,7 @@
 # 1. Defina o diretório onde estão os scripts e o termo que deseja buscar
 diretorio <- "etl"
 #termo_busca <- "fato_contratos.parquet"
-termo_busca <- "fato_contratos.parquet"
+termo_busca <- "indicador_cad_pessoas_pe.parquet"
 
 # 2. Liste todos os arquivos .R no diretório (e subdiretórios, se inclusive = TRUE)
 arquivos_r <- list.files(path = diretorio, pattern = "\\.[Rr]$", full.names = TRUE, recursive = TRUE)

@@ -2,6 +2,7 @@ library(arrow)
 library(readxl)
 library(janitor)
 library(tidyverse)
+library(cli)
 
 # paths ----
 if (file.exists("R/paths.R")) source("R/paths.R") else if (file.exists("paths.R")) source("paths.R") else if (file.exists("../paths.R")) source("../paths.R") else if (file.exists("etl/paths.R")) source("etl/paths.R")
@@ -25,6 +26,10 @@ caminho_exames          <- file.path(DIR_RAW_AURORA, "saude/Exames (Procedimento
 caminho_cirurgias       <- file.path(DIR_RAW_AURORA, "saude/Procedimentos Cirúrgicos por tipo de gestão.csv")
 
 caminho_indicador       <- file.path(DIR_RAW_AURORA, "indicadores/lista de indicadores.xlsx")
+
+
+caminho_agua            <- file.path(DIR_RAW_AURORA, "vulnerabilidade/relatorio_brasil_agua_sinisa.xlsx")
+caminho_esgoto          <- file.path(DIR_RAW_AURORA, "vulnerabilidade/relatorio_brasil_esgoto_sinisa.xlsx")
 
 # 2. Dicionários e Metadados --------------------------------------------------
 tb_regioes <- read_excel(caminho_indicador, sheet = "dic_Regioes") %>%
@@ -520,7 +525,199 @@ extrair_mapbiomas_regioes <- function() {
 
 df_mapbiomas_reg <- extrair_mapbiomas_regioes()
 
-# 11. Consolidação Final com nm_fantasia e polaridade -------------------------
+# 11. Abastecimento de Água (SINISA - Regiões e Brasil) -----------------------
+extrair_agua_sinisa_regioes <- function() {
+  if (!file.exists(caminho_agua)) {
+    cli_alert_warning("Arquivo do SINISA Água ausente em {.path {caminho_agua}}")
+    return(tibble())
+  }
+  
+  abas <- excel_sheets(caminho_agua)
+  
+  # --- 11.1 Aba Regiões (formato wide) ---
+  aba_reg <- abas[str_detect(abas, regex("^regi[oõ]es?$", ignore_case = TRUE))]
+  if (length(aba_reg) == 0) aba_reg <- abas[1]
+  
+  df_reg <- suppressWarnings(
+    suppressMessages(
+      read_excel(caminho_agua, sheet = aba_reg, col_types = "text")
+    )
+  ) %>%
+    clean_names() %>%
+    rename(
+      cod_regiao = cod_ibge,
+      ano        = ano_referencia
+    ) %>%
+    mutate(
+      cod_regiao = as.character(str_trim(cod_regiao)),
+      ano        = as.numeric(ano)
+    ) %>%
+    inner_join(tb_regioes %>% select(cod_regiao, sg_regiao, nm_regiao) %>% distinct(), by = "cod_regiao") %>%
+    select(cod_regiao, sg_regiao, nm_regiao, ano, everything()) %>%
+    pivot_longer(
+      cols = c(
+        iag0001, iag0002, iag0003, iag0004, iag0005, iag0006,
+        iag2006, iag2013, ifa1001, ifa2002
+      ),
+      names_to  = "metrica_orig",
+      values_to = "indicador_raw"
+    )
+  
+  # --- 11.2 Aba Brasil (formato long: codigo | indicador | valor) ---
+  aba_br <- abas[str_detect(abas, regex("^brasil$", ignore_case = TRUE))]
+  
+  df_br <- if (length(aba_br) > 0) {
+    raw_br <- suppressWarnings(
+      suppressMessages(
+        read_excel(caminho_agua, sheet = aba_br[1], col_types = "text")
+      )
+    ) %>%
+      clean_names()
+    
+    # Verifica se há coluna de ano na aba Brasil; se não houver, herda da aba Regiões
+    col_ano <- names(raw_br)[str_detect(names(raw_br), "^ano")]
+    ano_fallback <- if (nrow(df_reg) > 0) max(df_reg$ano, na.rm = TRUE) else NA_real_
+    
+    raw_br %>%
+      mutate(
+        cod_regiao   = "76",
+        metrica_orig = str_to_lower(str_trim(codigo)),
+        indicador_raw = valor,
+        ano = if (length(col_ano) > 0) as.numeric(.data[[col_ano[1]]]) else ano_fallback
+      ) %>%
+      inner_join(tb_regioes %>% select(cod_regiao, sg_regiao, nm_regiao) %>% distinct(), by = "cod_regiao") %>%
+      select(cod_regiao, sg_regiao, nm_regiao, ano, metrica_orig, indicador_raw)
+  } else {
+    tibble()
+  }
+  
+  # --- 11.3 Padronização Unificada (Regiões + Brasil) ---
+  bind_rows(df_reg, df_br) %>%
+    mutate(
+      sigla_indicador = case_when(
+        metrica_orig == "iag0001" ~ "abastecimento_pop_agua_pct",
+        metrica_orig == "iag0002" ~ "abastecimento_pop_urbana_agua_pct",
+        metrica_orig == "iag0003" ~ "abastecimento_pop_rural_agua_pct",
+        metrica_orig == "iag0004" ~ "abastecimento_dom_agua_pct",
+        metrica_orig == "iag0005" ~ "abastecimento_dom_urbana_agua_pct",
+        metrica_orig == "iag0006" ~ "abastecimento_dom_rural_agua_pct",
+        metrica_orig == "iag2006" ~ "consumo_total_medio_agua",
+        metrica_orig == "iag2013" ~ "perdas_distribuicao_agua",
+        metrica_orig == "ifa1001" ~ "tarifa_media_agua",
+        metrica_orig == "ifa2002" ~ "custo_medio_agua",
+        TRUE ~ NA_character_
+      ),
+      valor_num = indicador_raw %>%
+        str_remove_all("\\.") %>%
+        str_replace(",", ".") %>%
+        as.numeric(),
+      mes_referencia = NA_character_,
+      indicador      = as.character(valor_num)
+    ) %>%
+    filter(!is.na(sigla_indicador), !is.na(valor_num), !indicador %in% c("-", "ND", "nan", "NA", NA)) %>%
+    select(cod_regiao, sg_regiao, nm_regiao, ano, indicador, mes_referencia, sigla_indicador)
+}
+
+df_agua_reg <- extrair_agua_sinisa_regioes()
+cli_alert_success("Abastecimento de Água (Regiões e Brasil) processado.")
+
+# 12. Esgoto (SINISA - Regiões e Brasil) --------------------------------------
+extrair_esgoto_sinisa_regioes <- function() {
+  if (!file.exists(caminho_esgoto)) {
+    cli_alert_warning("Arquivo do SINISA Esgoto ausente em {.path {caminho_esgoto}}")
+    return(tibble())
+  }
+  
+  abas <- excel_sheets(caminho_esgoto)
+  
+  # --- 12.1 Aba Regiões (formato wide) ---
+  aba_reg <- abas[str_detect(abas, regex("^regi[oõ]es?$", ignore_case = TRUE))]
+  if (length(aba_reg) == 0) aba_reg <- abas[1]
+  
+  df_reg <- suppressWarnings(
+    suppressMessages(
+      read_excel(caminho_esgoto, sheet = aba_reg, col_types = "text")
+    )
+  ) %>%
+    clean_names() %>%
+    rename(
+      cod_regiao = cod_ibge,
+      ano        = ano_referencia
+    ) %>%
+    mutate(
+      cod_regiao = as.character(str_trim(cod_regiao)),
+      ano        = as.numeric(ano)
+    ) %>%
+    inner_join(tb_regioes %>% select(cod_regiao, sg_regiao, nm_regiao) %>% distinct(), by = "cod_regiao") %>%
+    select(cod_regiao, sg_regiao, nm_regiao, ano, everything()) %>%
+    pivot_longer(
+      cols = c(
+        ies0001, ies0002, ies0003, ies0004, ies0005, ies0006,
+        ife1001, ife2002, ies2003, ies2004
+      ),
+      names_to  = "metrica_orig",
+      values_to = "indicador_raw"
+    )
+  
+  # --- 12.2 Aba Brasil (formato long: codigo | indicador | valor) ---
+  aba_br <- abas[str_detect(abas, regex("^brasil$", ignore_case = TRUE))]
+  
+  df_br <- if (length(aba_br) > 0) {
+    raw_br <- suppressWarnings(
+      suppressMessages(
+        read_excel(caminho_esgoto, sheet = aba_br[1], col_types = "text")
+      )
+    ) %>%
+      clean_names()
+    
+    col_ano <- names(raw_br)[str_detect(names(raw_br), "^ano")]
+    ano_fallback <- if (nrow(df_reg) > 0) max(df_reg$ano, na.rm = TRUE) else NA_real_
+    
+    raw_br %>%
+      mutate(
+        cod_regiao    = "76",
+        metrica_orig  = str_to_lower(str_trim(codigo)),
+        indicador_raw = valor,
+        ano = if (length(col_ano) > 0) as.numeric(.data[[col_ano[1]]]) else ano_fallback
+      ) %>%
+      inner_join(tb_regioes %>% select(cod_regiao, sg_regiao, nm_regiao) %>% distinct(), by = "cod_regiao") %>%
+      select(cod_regiao, sg_regiao, nm_regiao, ano, metrica_orig, indicador_raw)
+  } else {
+    tibble()
+  }
+  
+  # --- 12.3 Padronização Unificada (Regiões + Brasil) ---
+  bind_rows(df_reg, df_br) %>%
+    mutate(
+      sigla_indicador = case_when(
+        metrica_orig == "ies0001" ~ "abastecimento_pop_esgoto_pct",
+        metrica_orig == "ies0002" ~ "abastecimento_pop_urbana_esgoto_pct",
+        metrica_orig == "ies0003" ~ "abastecimento_pop_rural_esgoto_pct",
+        metrica_orig == "ies0004" ~ "abastecimento_dom_esgoto_pct",
+        metrica_orig == "ies0005" ~ "abastecimento_dom_urbana_esgoto_pct",
+        metrica_orig == "ies0006" ~ "abastecimento_dom_rural_esgoto_pct",
+        metrica_orig == "ies2003" ~ "esgoto_tratado_agua_consumida",
+        metrica_orig == "ies2004" ~ "esgoto_tratado_coletado",
+        metrica_orig == "ife1001" ~ "tarifa_media_esgoto",
+        metrica_orig == "ife2002" ~ "custo_medio_esgoto",
+        TRUE ~ NA_character_
+      ),
+      valor_num = indicador_raw %>%
+        str_remove_all("\\.") %>%
+        str_replace(",", ".") %>%
+        as.numeric(),
+      mes_referencia = NA_character_,
+      indicador      = as.character(valor_num)
+    ) %>%
+    filter(!is.na(sigla_indicador), !is.na(valor_num), !indicador %in% c("-", "ND", "nan", "NA", NA)) %>%
+    select(cod_regiao, sg_regiao, nm_regiao, ano, indicador, mes_referencia, sigla_indicador)
+}
+
+df_esgoto_reg <- extrair_esgoto_sinisa_regioes()
+cli_alert_success("Esgoto (Regiões e Brasil) processado.")
+
+
+# 13. Consolidação Final com nm_fantasia e polaridade -------------------------
 df_indicadores_regioes <- bind_rows(
   df_ideb_regioes, 
   df_infantil_reg, 
@@ -529,7 +726,9 @@ df_indicadores_regioes <- bind_rows(
   df_ibge_reg,
   df_saude_gestao_reg,
   df_escolarizacao_reg,
-  df_mapbiomas_reg
+  df_mapbiomas_reg,
+  df_agua_reg,
+  df_esgoto_reg
 ) %>%
   left_join(meta_indicadores, by = "sigla_indicador") %>%
   select(
@@ -554,5 +753,31 @@ df_indicadores_regioes %>% glimpse()
 dir.create(file.path(DIR_OUT_AURORA, "parquet"), recursive = TRUE, showWarnings = FALSE)
 df_indicadores_regioes %>%
   write_parquet(
-    file.path(DIR_OUT_AURORA, 'parquet/df_indicadores_regioes.parquet')
+    file.path(DIR_OUT_AURORA, "parquet/df_indicadores_regioes.parquet")
   )
+
+
+# Exportação para Google Sheets ----
+cli::cli_alert_info("Iniciando exportação para o Google Sheets...")
+
+# 1. Autenticação via Service Account (padrão DIR_RAW_AURORA)
+google_token_path <- file.path(DIR_RAW_AURORA, "r-sheets-hugo-0788cc358cb5.json")
+
+if (file.exists(google_token_path)) {
+  googlesheets4::gs4_auth(path = google_token_path)
+} else {
+  cli::cli_warn("Token JSON não encontrado em {.path {google_token_path}}. Tentando autenticação padrão...")
+  googlesheets4::gs4_auth()
+}
+
+# 2. ID da Planilha de destino
+sheet_id_destino <- "1668WVwrTafj_aycva5uHAgiBSYp1sPA0NrxwIBwAlSQ"
+
+# 3. Escrita da base consolidada na primeira aba (gid = 0)
+googlesheets4::sheet_write(
+  data  = df_indicadores_regioes,
+  ss    = sheet_id_destino,
+  sheet = 1
+)
+
+cli::cli_alert_success("Base {.val df_indicadores_ufs} exportada com sucesso para o Google Sheets!")

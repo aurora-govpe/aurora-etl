@@ -1,4 +1,4 @@
-﻿# versão jdbc ----
+# versão jdbc ----
 library(arrow)
 library(BigDataPE)
 library(DBI)
@@ -25,6 +25,12 @@ drive_download(
   path = caminho_local_gastos,
   overwrite = TRUE
 )
+
+# Fallbacks defensivos para execuções avulsas
+if (!exists("DIR_ETL"))        DIR_ETL        <- getwd()
+if (!exists("DIR_RAW_AURORA")) DIR_RAW_AURORA <- file.path(DIR_ETL, "data")
+if (!exists("DIR_OUT_AURORA")) DIR_OUT_AURORA <- file.path(DIR_ETL, "data")
+
 
 # utils ----
 jargoes <- c(
@@ -58,33 +64,33 @@ jargoes <- c(
 
 # liquidação ----
 ## 2019 ----
-liquidacao_2019_bdpe <- read_parquet('data/efisco/liquidacao_2019_bdpe.parquet') %>%
-  mutate(
-    ano  = 2019,
-    gbplicit_cd = as.character(gbplicit_cd),
-    chave_contrato = paste0(gbpcontr_sq, gbpcontr_nu_ano, str_remove_all(sg_ugc, "-"), ug_cd),
-    gbpcroelic_nu_ano = as.character(gbpcroelic_nu_ano),
-    gbpcroelic_sq = as.character(gbpcroelic_sq),
-    execorc_in_temporal_fonte = as.character(execorc_in_temporal_fonte),
-    gbpcontr_nu_ano = as.character(gbpcontr_nu_ano),
-    gbpcontr_sq = as.character(gbpcontr_sq),
-    ug_cd_coordenadora = as.character(ug_cd_coordenadora),
-    ug_cd = as.character(ug_cd),
-    gpoacao_cd = as.character(gpoacao_cd),
-    fonterecur_cd = as.character(fonterecur_cd),
-    tpdocidnt_cd = as.character(tpdocidnt_cd),
-    ug_cd_credor = as.character(ug_cd_credor),
-    mes_liquidacao = as.character(mes_liquidacao),
-    grdesp_cd = as.character(grdesp_cd),
-    elemdesp_id = as.character(elemdesp_id),
-    codigo_item_gasto = as.character(codigo_item_gasto),
-    item_valor_liquidado = as.character(item_valor_liquidado),
-    valor_estornado = as.character(valor_estornado),
-    valor_liquido_le = as.character(valor_liquido_le),
-    ano_mes_documento_origem = as.character(ano_mes_documento_origem)
-  )
-
-liquidacao_2019_bdpe %>% glimpse()
+# liquidacao_2019_bdpe <- read_parquet('data/efisco/liquidacao_2019_bdpe.parquet') %>%
+#   mutate(
+#     ano  = 2019,
+#     gbplicit_cd = as.character(gbplicit_cd),
+#     chave_contrato = paste0(gbpcontr_sq, gbpcontr_nu_ano, str_remove_all(sg_ugc, "-"), ug_cd),
+#     gbpcroelic_nu_ano = as.character(gbpcroelic_nu_ano),
+#     gbpcroelic_sq = as.character(gbpcroelic_sq),
+#     execorc_in_temporal_fonte = as.character(execorc_in_temporal_fonte),
+#     gbpcontr_nu_ano = as.character(gbpcontr_nu_ano),
+#     gbpcontr_sq = as.character(gbpcontr_sq),
+#     ug_cd_coordenadora = as.character(ug_cd_coordenadora),
+#     ug_cd = as.character(ug_cd),
+#     gpoacao_cd = as.character(gpoacao_cd),
+#     fonterecur_cd = as.character(fonterecur_cd),
+#     tpdocidnt_cd = as.character(tpdocidnt_cd),
+#     ug_cd_credor = as.character(ug_cd_credor),
+#     mes_liquidacao = as.character(mes_liquidacao),
+#     grdesp_cd = as.character(grdesp_cd),
+#     elemdesp_id = as.character(elemdesp_id),
+#     codigo_item_gasto = as.character(codigo_item_gasto),
+#     item_valor_liquidado = as.character(item_valor_liquidado),
+#     valor_estornado = as.character(valor_estornado),
+#     valor_liquido_le = as.character(valor_liquido_le),
+#     ano_mes_documento_origem = as.character(ano_mes_documento_origem)
+#   )
+# 
+# liquidacao_2019_bdpe %>% glimpse()
 
 ## 2020 ----
 liquidacao_2020_bdpe <- read_parquet('data/efisco/liquidacao_2020_bdpe.parquet') %>%
@@ -165,8 +171,8 @@ liquidacao_bdpe <- liquidacao_2026_bdpe %>%
     liquidacao_2023_bdpe,
     liquidacao_2022_bdpe,
     liquidacao_2021_bdpe,
-    liquidacao_2020_bdpe,
-    liquidacao_2019_bdpe
+    liquidacao_2020_bdpe
+    # liquidacao_2019_bdpe
   ) %>%
   select(
     ano, chave_contrato, gbplicit_cd, gbpcontr_nu_ano, gbpcontr_sq, gbpcontr_in_tac, sg_ugc, gpoacao_cd, gpoacaocad_nm, gposubacao_cd , gposubcad_nm, fichafinan_in_dea, fonterecur_cd, fonterecur_nm, nu_documento_credor, pessoa_nm_razao_social, gfuliqd_dt, mes_liquidacao, grdesp_cd, modalidade_aplicacao, elemdesp_id, elemdesp_id, valor_liquido_le, ano_mes_documento_origem, despgern_tx_det
@@ -181,8 +187,8 @@ liquidacao_bdpe <- liquidacao_2026_bdpe %>%
 liquidacao_bdpe %>% glimpse()
 
 ## contratos ----
-dados_contratos <- read.csv2(
-  'data/efisco/contratos/EF_CONTRATO.csv',
+# dados_contratos <- read.csv2(file.path(DIR_RAW_AURORA, "/efisco/contratos/EF_CONTRATO_v4.csv"),
+dados_contratos <- read.csv2(file.path(DIR_RAW_AURORA, "/efisco/contratos/EF_CONTRATO_v4.csv"),
   sep = '|',
   encoding = 'UTF-8'
 ) %>%
@@ -420,20 +426,20 @@ DBI::dbDisconnect(con, shutdown = TRUE)
 # EXPORTAÇÃO DOS ARQUIVOS PARQUET
 # =========================================================================
 
-caminho_exportacao <- "app_aurora_orcamento/data/"
+caminho_exportacao <- DIR_OUT_AURORA
 
 # Dimensões
-write_parquet(dim_fornecedor, paste0(caminho_exportacao, "dim_fornecedor.parquet"))
-write_parquet(dim_acao, paste0(caminho_exportacao, "dim_acao.parquet"))
-write_parquet(dim_contrato, paste0(caminho_exportacao, "dim_contrato.parquet"))
-write_parquet(dim_ugc, paste0(caminho_exportacao, "dim_ugc.parquet"))
-write_parquet(dim_tema, paste0(caminho_exportacao, "dim_tema.parquet"))
-write_parquet(dim_fonte, paste0(caminho_exportacao, "dim_fonte.parquet"))
-write_parquet(dim_despesa_gerencial, paste0(caminho_exportacao, "dim_despesa_gerencial.parquet"))
+write_parquet(dim_fornecedor, paste0(caminho_exportacao, "/parquet/dim_fornecedor.parquet"))
+write_parquet(dim_acao, paste0(caminho_exportacao, "/parquet/dim_acao.parquet"))
+write_parquet(dim_contrato, paste0(caminho_exportacao, "/parquet/dim_contrato.parquet"))
+write_parquet(dim_ugc, paste0(caminho_exportacao, "/parquet/dim_ugc.parquet"))
+write_parquet(dim_tema, paste0(caminho_exportacao, "/parquet/dim_tema.parquet"))
+write_parquet(dim_fonte, paste0(caminho_exportacao, "/parquet/dim_fonte.parquet"))
+write_parquet(dim_despesa_gerencial, paste0(caminho_exportacao, "/parquet/dim_despesa_gerencial.parquet"))
 
 # Fatos
-write_parquet(fato_contratos, paste0(caminho_exportacao, "fato_contratos.parquet"))
-write_parquet(fato_dashboard_agg, paste0(caminho_exportacao, "fato_dashboard_agg.parquet"))
+write_parquet(fato_contratos, paste0(caminho_exportacao, "/parquet/fato_contratos.parquet"))
+write_parquet(fato_dashboard_agg, paste0(caminho_exportacao, "/parquet/fato_dashboard_agg.parquet"))
 
 # exportação para o google drive ----
 
