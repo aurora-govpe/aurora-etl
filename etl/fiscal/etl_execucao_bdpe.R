@@ -139,20 +139,10 @@ execucao_bdpe <- open_dataset(arquivos_parquets) %>%
   mutate(across(-any_of(vars_numericas), as.character))
 
 # 7. Regras de Negócio e Classificações Originais ----
-# Busca priorizando as pastas dedicadas rds/
-caminho_op_cred <- if (file.exists(file.path(dir_rds_out, "dados_op_cred.rds"))) {
-  file.path(dir_rds_out, "dados_op_cred.rds")
-} else if (file.exists(file.path(DIR_OUT_AURORA, "dados_op_cred.rds"))) {
-  file.path(DIR_OUT_AURORA, "dados_op_cred.rds")
-} else if (file.exists(file.path(DIR_RAW_AURORA, "efisco/rds/dados_op_cred.rds"))) {
-  file.path(DIR_RAW_AURORA, "efisco/rds/dados_op_cred.rds")
-} else if (file.exists(file.path(DIR_RAW_AURORA, "efisco/dados_op_cred.rds"))) {
-  file.path(DIR_RAW_AURORA, "efisco/dados_op_cred.rds")
-} else {
-  file.path(DIR_RAW_AURORA, "dados_op_cred.rds")
-}
+# Busca priorizando as pastas dedicadas parquet/
+caminho_op_cred <- file.path(dir_parquet_out, "dados_op_cred.parquet")
 
-dados_op_cred <- readRDS(caminho_op_cred)
+dados_op_cred <- arrow::read_parquet(caminho_op_cred)
 
 codigos_op_credito <- dados_op_cred %>%
   drop_na(cod_operacao) %>% 
@@ -168,9 +158,41 @@ execucao_bdpe_2 <- execucao_bdpe %>%
     is_op_cred   = str_remove(coalesce(fonte_detalhada_cod, ""), "^0+") %in% codigos_op_credito
   )
 
-# Separação nas duas bases finais idênticas ao original
-execucao_bdpe_vf <- execucao_bdpe_2 %>%
+traducao_fonte <- readxl::read_excel(file.path(DIR_BASE, "traducao_fonte_sintetica.xlsx"), sheet = "de-para") %>% 
+  janitor::clean_names() %>% 
+  rename(fonte_sintetica_cod = fnt_22,
+         fonte_sintetica_nome = fnt_nome_22) %>% 
+  select(fonte_sintetica_cod, fonte_sintetica_nome) %>% 
+  mutate(fonte_sintetica_cod = as.numeric(fonte_sintetica_cod)) %>% 
+  distinct(fonte_sintetica_cod, .keep_all = TRUE)
+
+traducao_fonte_23 <- readxl::read_excel(file.path(DIR_BASE, "traducao_fonte_sintetica.xlsx"), sheet = "2026") %>% 
+  janitor::clean_names() %>% 
+  rename(fonte_sintetica_cod = fnt_23,
+         fonte_sintetica_nome = fnt_nome_23) %>% 
+  select(fonte_sintetica_cod, fonte_sintetica_nome) %>% 
+  mutate(fonte_sintetica_cod = as.numeric(fonte_sintetica_cod)) %>% 
+  distinct(fonte_sintetica_cod, .keep_all = TRUE)
+
+# Preparação base antes da divisão por período
+execucao_base_filtrada <- execucao_bdpe_2 %>%
+  mutate(fonte_sintetica_cod = as.numeric(fonte_sintetica_cod)) %>% 
   filter(mes != 99)
+
+# 1. Período de 2015 até 2022 (Classificação antiga)
+execucao_ate_2022 <- execucao_base_filtrada %>%
+  filter(ano <= 2022) %>%
+  left_join(traducao_fonte, by = "fonte_sintetica_cod")
+
+# 2. Período de 2023 em diante (Classificação nova)
+execucao_2023_diante <- execucao_base_filtrada %>%
+  filter(ano >= 2023) %>%
+  left_join(traducao_fonte_23, by = "fonte_sintetica_cod")
+
+# Consolidação final em um único dataframe
+execucao_bdpe_vf <- bind_rows(execucao_ate_2022, execucao_2023_diante) %>%
+  select(fonte_sintetica_cod, fonte_sintetica_nome, everything()) %>% 
+  mutate(fonte_sintetica_cod = as.character(fonte_sintetica_cod))
 
 orcamento_bdpe_vf <- execucao_bdpe_2 %>%
   mutate(soma_alvo = rowSums(across(any_of(vars_orcamento)), na.rm = TRUE)) %>%

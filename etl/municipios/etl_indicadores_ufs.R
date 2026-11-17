@@ -3,7 +3,8 @@
 # Objetivo: Extração, tratamento e consolidação multi-fonte de indicadores
 #           estaduais do Brasil (IDEB, Educação Infantil, Dependência Adm,
 #           CNUC, IBGE, Segurança Pública, Saúde, Escolarização, MapBiomas,
-#           Energia, Saneamento SINISA e Agricultura PAM/IBGE).
+#           Energia, Saneamento SINISA, Agricultura PAM/IBGE, Suape,
+#           Aeroportos e Déficit Habitacional).
 #           Enriquecimento com metadados e exportação (Parquet com Snappy e RDS).
 # ==============================================================================
 
@@ -17,6 +18,7 @@ library(tidyverse)
 library(readr)
 library(cli)
 library(jsonlite)
+library(googledrive)
 
 # ------------------------------------------------------------------------------
 # 2. RESOLUÇÃO DE DIRETÓRIOS E AMBIENTE (ESTRATÉGIA MODULAR AURORA)
@@ -92,13 +94,25 @@ caminho_agua            <- file.path(DIR_RAW_AURORA, "vulnerabilidade/relatorio_
 caminho_esgoto          <- file.path(DIR_RAW_AURORA, "vulnerabilidade/relatorio_brasil_esgoto_sinisa.xlsx")
 caminho_agricultura     <- file.path(DIR_RAW_AURORA, "agricultura/dados_pam_uf_2020_2025.xlsx")
 caminho_suape           <- file.path(DIR_RAW_AURORA, "aeroportuaria/porto_suape_carga.xlsx")
-caminho_passageiros           <- file.path(DIR_RAW_AURORA, "aeroportuaria/df_passageiros_uf_ano.xlsx")
+caminho_passageiros     <- file.path(DIR_RAW_AURORA, "aeroportuaria/df_passageiros_uf_ano.xlsx")
+
+caminho_turismo     <- file.path(DIR_DADOS, "parquet/pms_iatur_uf.parquet")
 
 ## Lista de indicadores ----
 url_lista <- "https://docs.google.com/spreadsheets/d/1WNuK75MyAHYofzvd6wkiVIG-FHpwqruIDyUMtkfBlOI/edit?gid=1805893996#gid=1805893996"
 caminho_indicador <- tempfile(fileext = ".xlsx")
 
 drive_download(file = googledrive::as_id(url_lista), path = caminho_indicador, overwrite = TRUE)
+
+## Déficit Habitacional (Google Drive) ----
+url_deficit_hab <- "https://docs.google.com/spreadsheets/d/1AwlL17JBmASv8Jurnkb6zhfXc0fzGQwp/edit?gid=1984136610#gid=1984136610"
+caminho_deficit_hab <- tempfile(fileext = ".xlsx")
+
+tryCatch({
+  drive_download(file = googledrive::as_id(url_deficit_hab), path = caminho_deficit_hab, overwrite = TRUE)
+}, error = function(e) {
+  cli_alert_warning("Falha ao baixar planilha de Déficit Habitacional do Google Drive: {e$message}")
+})
 
 # ------------------------------------------------------------------------------
 # 4. DICIONÁRIOS E FUNÇÕES AUXILIARES
@@ -666,10 +680,6 @@ extrair_energia_uf <- function() {
         TRUE ~ NA_character_
       ),
       valor_num = as.numeric(potencia_fiscalizada_k_w),
-      # %>%
-      #   str_remove_all("\\.") %>%
-      #   str_replace(",", ".") %>%
-      #   as.numeric(),
       ano            = as.numeric(ano),
       mes_referencia = NA_character_,
       indicador      = as.character(valor_num)
@@ -879,13 +889,8 @@ extrair_suape_uf <- function() {
       cod_uf    = as.character(str_trim(cod_uf)),
       ano       = as.numeric(ano),
       valor_num = as.numeric(valor)
-      # %>%
-      #   str_remove_all("\\.") %>%
-      #   str_replace(",", ".") %>%
-      #   as.numeric()
     ) %>%
     filter(!is.na(valor_num)) %>%
-    # Agrupamento por UF e Ano para somar os valores (ex: dados mensais ou por operação)
     group_by(cod_uf, ano) %>%
     summarise(
       valor_total = sum(valor_num, na.rm = TRUE),
@@ -908,7 +913,7 @@ cli_alert_success("Suape (Carga Bruta) processada.")
 ## 5.15 Passageiros ----
 extrair_passageiros_uf <- function() {
   if (!file.exists(caminho_passageiros)) {
-    cli_alert_warning("Arquivo de Suape ausente em {.path {caminho_passageiros}}")
+    cli_alert_warning("Arquivo de Passageiros ausente em {.path {caminho_passageiros}}")
     return(tibble())
   }
   
@@ -921,12 +926,11 @@ extrair_passageiros_uf <- function() {
   df_raw %>%
     clean_names() %>%
     mutate(
-      sg_uf = as.character(uf),
+      sg_uf     = as.character(uf),
       ano       = as.numeric(ano),
       valor_num = as.numeric(total_geral)
     ) %>%
     filter(!is.na(valor_num)) %>%
-    # Agrupamento por UF e Ano para somar os valores (ex: dados mensais ou por operação)
     group_by(sg_uf, ano) %>%
     summarise(
       valor_total = sum(valor_num, na.rm = TRUE),
@@ -945,6 +949,131 @@ extrair_passageiros_uf <- function() {
 df_passageiros_ufs <- extrair_passageiros_uf()
 cli_alert_success("Aeroportos (Passageiros) processada.")
 
+
+## 5.16 Déficit Habitacional (FJP / Google Drive) ----
+extrair_deficit_hab_uf <- function() {
+  if (!file.exists(caminho_deficit_hab)) {
+    cli_alert_warning("Arquivo de Déficit Habitacional ausente em {.path {caminho_deficit_hab}}")
+    return(tibble())
+  }
+  
+  df_raw <- suppressWarnings(
+    suppressMessages(
+      read_excel(caminho_deficit_hab, sheet = "Deficit_habitacional", col_types = "text")
+    )
+  )
+  
+  df_raw %>%
+    clean_names() %>%
+    mutate(
+      nm_uf = str_trim(regiao),
+      ano   = as.numeric(ano),
+      # Trata separadores de milhar (.) e decimal (,) antes de converter
+      valor_num = as.numeric(deficit_habitacional)
+    ) %>%
+    # O inner_join com tb_ufs mantém apenas as UFs e descarta as linhas de regiões (ex: Norte)
+    inner_join(tb_ufs %>% select(cod_uf, sg_uf, nm_uf) %>% distinct(), by = "nm_uf") %>%
+    filter(!is.na(ano), !is.na(valor_num)) %>%
+    mutate(
+      sigla_indicador = "deficit_hab",
+      mes_referencia  = NA_character_,
+      indicador       = as.character(valor_num)
+    ) %>%
+    select(cod_uf, sg_uf, nm_uf, ano, indicador, mes_referencia, sigla_indicador)
+}
+
+df_deficit_hab_ufs <- extrair_deficit_hab_uf()
+cli_alert_success("Déficit Habitacional processado.")
+
+
+## 5.17 Turismo (IATUR / PMS - IBGE) ----
+# extrair_turismo_uf <- function() {
+#   if (!file.exists(caminho_turismo)) {
+#     cli_alert_warning("Arquivo de turismo ausente em {.path {caminho_turismo}}")
+#     return(tibble())
+#   }
+#   
+#   df_raw <- suppressWarnings(
+#     suppressMessages(
+#       arrow::read_parquet(caminho_turismo)
+#     )
+#   )
+#   
+#   df_raw %>%
+#     clean_names() %>%
+#     # Mantém apenas o número-índice (var_codigo == "7168"), evitando misturar com taxas de variação (%)
+#     filter(var_codigo == "7168") %>%
+#     mutate(
+#       cod_uf    = as.character(str_trim(uf_codigo)),
+#       ano       = lubridate::year(as.Date(data)),
+#       valor_num = as.numeric(valor),
+#       sigla_indicador = case_when(
+#         tipo_codigo == "56727" | str_detect(tipo_indice, regex("receita", ignore_case = TRUE)) ~ "iatur_receita_idx",
+#         tipo_codigo == "56728" | str_detect(tipo_indice, regex("volume", ignore_case = TRUE))  ~ "iatur_volume_idx",
+#         TRUE ~ NA_character_
+#       )
+#     ) %>%
+#     filter(!is.na(sigla_indicador), !is.na(ano), !is.na(valor_num)) %>%
+#     # Média anual do número-índice por UF e tipo de índice
+#     group_by(cod_uf, ano, sigla_indicador) %>%
+#     summarise(
+#       valor_anual = mean(valor_num, na.rm = TRUE),
+#       .groups     = "drop"
+#     ) %>%
+#     inner_join(tb_ufs %>% select(cod_uf, sg_uf, nm_uf) %>% distinct(), by = "cod_uf") %>%
+#     mutate(
+#       mes_referencia = NA_character_,
+#       indicador      = as.character(round(valor_anual, 2))
+#     ) %>%
+#     select(cod_uf, sg_uf, nm_uf, ano, indicador, mes_referencia, sigla_indicador)
+# }
+
+# df_turismo_ufs <- extrair_turismo_uf()
+# cli_alert_success("Turismo (IATUR) processado.")
+
+## 5.17 Turismo (IATUR / PMS - IBGE - Série Mensal) ----
+extrair_turismo_uf <- function() {
+  if (!file.exists(caminho_turismo)) {
+    cli_alert_warning("Arquivo de turismo ausente em {.path {caminho_turismo}}")
+    return(tibble())
+  }
+  
+  df_raw <- suppressWarnings(
+    suppressMessages(
+      arrow::read_parquet(caminho_turismo)
+    )
+  )
+  
+  df_raw %>%
+    clean_names() %>%
+    # Mantém apenas o número-índice (var_codigo == "7168"), evitando misturar com taxas de variação (%)
+    filter(var_codigo == "7168") %>%
+    mutate(
+      cod_uf         = as.character(str_trim(uf_codigo)),
+      data_ref       = as.Date(data),
+      ano            = lubridate::year(data_ref),
+      # Extrai o mês ("01" a "12") a partir do mes_codigo (ex: "201101" -> "01")
+      mes_referencia = str_sub(str_trim(as.character(mes_codigo)), 5, 6),
+      valor_num      = as.numeric(valor),
+      sigla_indicador = case_when(
+        tipo_codigo == "56727" | str_detect(tipo_indice, regex("receita", ignore_case = TRUE)) ~ "iatur_receita_idx",
+        tipo_codigo == "56728" | str_detect(tipo_indice, regex("volume", ignore_case = TRUE))  ~ "iatur_volume_idx",
+        TRUE ~ NA_character_
+      )
+    ) %>%
+    filter(!is.na(sigla_indicador), !is.na(ano), !is.na(mes_referencia), !is.na(valor_num)) %>%
+    inner_join(tb_ufs %>% select(cod_uf, sg_uf, nm_uf) %>% distinct(), by = "cod_uf") %>%
+    mutate(
+      indicador = as.character(round(valor_num, 2))
+    ) %>%
+    select(cod_uf, sg_uf, nm_uf, ano, indicador, mes_referencia, sigla_indicador)
+}
+
+df_turismo_ufs <- extrair_turismo_uf() %>%
+  filter(ano >= "2020")
+
+df_turismo_ufs %>% View()
+cli_alert_success("Turismo (IATUR - mensal) processado.")
 
 # ------------------------------------------------------------------------------
 # 6. CONSOLIDAÇÃO FINAL E ENRIQUECIMENTO DE METADADOS
@@ -972,7 +1101,9 @@ df_indicadores_ufs <- bind_rows(
   df_esgoto_ufs,
   df_agricultura_ufs,
   df_suape_ufs,
-  df_passageiros_ufs
+  df_passageiros_ufs,
+  df_deficit_hab_ufs,
+  df_turismo_ufs
 ) %>%
   left_join(meta_indicadores, by = "sigla_indicador") %>%
   select(
@@ -987,7 +1118,7 @@ df_indicadores_ufs <- bind_rows(
     sigla_indicador,
     any_of(c("eixo", "grupo", "subdimensao", "tipo", "natureza", "polaridade", "fonte", "hiperlink"))
   ) %>%
-  arrange(sigla_indicador, cod_uf, ano)
+  arrange(sigla_indicador, cod_uf, ano) 
 
 cli_alert_success("Base consolidada com {nrow(df_indicadores_ufs)} registros totais.")
 
@@ -1009,6 +1140,7 @@ cli_alert_success("Arquivos exportados com sucesso:")
 cli_alert_info("Parquet: {.path {caminho_parquet_sub}}")
 cli_alert_info("RDS:     {.path {caminho_rds_root}}")
 
+df_indicadores_ufs %>% View()
 
 # ------------------------------------------------------------------------------
 # 7.1 GERAÇÃO E EXPORTAÇÃO DE METADADOS (JSON PARA FRONTEND)

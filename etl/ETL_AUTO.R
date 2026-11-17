@@ -15,7 +15,7 @@ pasta_scripts <- if (dir.exists("etl")) "etl" else "."
 
 # 2. Definição do escopo de execução -------------------------------------------
 # Opções: "diario", "semanal", "mensal", "bimestral", "anual", "legado", "servidor"
-periodicidade <- "semanal"  # Altere conforme necessário
+periodicidade <- "diario"  # Altere conforme necessário
 
 # 3. Dicionário de rotinas por periodicidade -----------------------------------
 # DICA: Use caminhos relativos à pasta_scripts (ou à raiz do projeto, se fora de etl/)
@@ -53,16 +53,17 @@ rotinas <- list(
   # ROTINAS MENSAIS
   mensal = c(
     'rpa/rpa_compesa.py',
-    'etl/rpa/rpa_anac_dados_estatisticos.py',
+    'rpa/rpa_anac_dados_estatisticos.py',
     'etl_pac.R',
     'comex/etl_comex.R',
     'rais/etl_rais_tecnologia.R',
     'municipios/etl_mvi_cvp_muni.R',
+    'municipios/etl_turismo_iatur.R',
     'municipios/etl_caracter_mun.R',
     'municipios/atualizar_gestores_brasilapi.R',
     'municipios/etl_caracterizacao_ibge_tse.R', 
     'municipios/etl_ficha_municipal.R',
-    'R/gerador_pdfs.R'
+    'municipios/etl_indicadores_ufs.R'
   ),
   
   # ROTINAS BIMESTRAIS
@@ -78,11 +79,11 @@ rotinas <- list(
   # ROTINAS ANUAIS / SOB DEMANDA
   anual = c(
     'meio ambiente/etl_agricultura_sidra.R',
-    'municipios/etl_indicadores_ufs.R',
     'municipios/etl_indicadores_regioes_br.R',
     'municipios/etl_urbanizacao.R',
     'municipios/etl_demografia_pe.R',
-    'municipios/etl_indicadores_ibge_sidra.R'
+    'municipios/etl_indicadores_ibge_sidra.R',
+    'municipios/etl_deficit_hab_fjp.R'
   ),
   
   # ROTINAS DE SERVIDOR / ESPECIAIS
