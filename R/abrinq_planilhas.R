@@ -5,6 +5,8 @@
 #       total, por faixa etária, cor/raça, sexo e evolução dos casos (tema: cidadania)
 #   - Taxa de mortalidade atribuída a fontes de água inadequadas, saneamento
 #       inadequado e falta de higiene, por grupos etários (tema: saúde)
+#   - Demais lotes (trabalho infantil, Gini, socioeducativas, casamentos, Lista TIP
+#       14-17, suicídio até 19 anos): ver as seções de decisões abaixo
 #
 # Usado por etl_caracter_mun.R (municípios de PE) e etl_indicadores_ufs.R (UFs).
 # O catálogo abaixo é a única fonte das siglas/nomes: `abrinq_lote_metadados()`
@@ -71,9 +73,35 @@
 #    carregadas como vieram: `ano` + `mes_referencia` = "T1".."T4". Só UFs.
 #  - Brasil e regiões (código IBGE de 1 dígito) ficam de fora, como nos lotes
 #    anteriores.
+#
+# --- Lote 4: óbitos por suicídio de indivíduos até 19 anos (usuária Kattine Costa
+#     Pedrosa, 2026-11-17) ---
+# D-008  Suicídio até 19 anos: o "-" vale 0 óbito (municípios e UFs), nas 4 planilhas.
+#        Evidência: com o "-" = 0, a soma das categorias bate com o total em 5.538 de
+#        5.538 combinações localidade x ano na escolaridade e nos grupos etários
+#        (0 a 19 anos); nos totais o "-" e o "0" se alternam para o mesmo fato.
+#        Revogar: AURORA_SUICIDIO_TRACO_COMO_ZERO=false.
+# D-009  Suicídio até 19 anos, planilha por grupos etários: 2007 e 2020 descartados
+#        (municípios e UFs). 2007 é cópia de 2008 na fonte (71% das células iguais;
+#        nos outros pares de anos, ~10%); em 2020 o total 0-19 diverge das outras três
+#        planilhas, que concordam entre si (PE: 34 contra 25).
+#        Revogar: AURORA_SUICIDIO_IDADE_2007_2020_DESCARTAR=false.
+#
+# Notas (não são decisões):
+#  - O total até 19 anos sai só da planilha por escolaridade (igual ao da cor/raça). Os
+#    totais das planilhas por sexo (municípios de 2017 errados: PE soma 19 contra 44) e
+#    por grupos etários ficam de fora, assim como a aba "Menores de 19 anos" (até 2023).
+#  - Fora do lote: faixas de 20 anos ou mais, total de todas as idades e idade ignorada
+#    (fora do recorte "até 19 anos"); "Sexo ignorado" (tudo "-"); "Menores de 1 ano" e
+#    "1 a 4 anos" (12 casos em todo o país, nenhum em PE).
+#  - Cor/raça 2024: em 7 UFs a soma das categorias fica 1 abaixo do total (fonte).
 # ==============================================================================
 
 ABRINQ_ARQUIVOS <- c(
+  suic_sexo  = "saude/Número de óbitos de indivíduos de até 19 anos de idade por suicídio segundo sexo.xlsx",
+  suic_cor   = "saude/Número de óbitos de indivíduos de até 19 anos de idade por suicídio segundo cor_raça.xlsx",
+  suic_escol = "saude/Número de óbitos de indivíduos de até 19 anos de idade por suicídio segundo escolaridade.xlsx",
+  suic_idade = "saude/Número de óbitos de indivíduos de até 19 anos de idade por suicídio segundo grupos etários.xlsx",
   gini       = "economia/Coeficiente de Gini de desigualdade.xlsx",
   liberdade  = "cidadania/Número de adolescentes cumprindo medidas de privação e de restrição de liberdade.xlsx",
   casamentos = "cidadania/Número de casamentos registrados crianças e adolescentes do sexo feminino.xlsx",
@@ -90,23 +118,47 @@ ABRINQ_ARQUIVOS <- c(
   ti_agro    = "cidadania/População com até 14 anos de idade ocupada em estabelecimentos agropecuários.xlsx"
 )
 
-# Decisões D-004/D-005/D-006: exclusões pontuais (sigla, tipo de série, ano, nível)
+# Decisões D-004/D-005/D-006/D-009: exclusões pontuais (sigla, anos, níveis; anos e
+# níveis separados por vírgula)
 .abq_exclusoes <- data.frame(
-  id = c("D-004", "D-005", "D-006"),
-  env = c("AURORA_TI_AUTOCONSUMO_2022_DESCARTAR", "AURORA_TI_TIP_PCT_2022_UF_DESCARTAR", "AURORA_TI_ECON_1617_PCT_2017_DESCARTAR"),
-  sigla_rx = c("^ti_autoc_(5_9|10_13|14_15|16_17)_abs$", "^ti_tip_(5_9|10_13|14_15|16_17)_pct$", "^ti_econ_16_17_pct$"),
-  ano = c(2022, 2022, 2017),
-  nivel = c("uf", "uf", "uf"),
+  id = c("D-004", "D-005", "D-006", "D-009"),
+  env = c("AURORA_TI_AUTOCONSUMO_2022_DESCARTAR", "AURORA_TI_TIP_PCT_2022_UF_DESCARTAR",
+          "AURORA_TI_ECON_1617_PCT_2017_DESCARTAR", "AURORA_SUICIDIO_IDADE_2007_2020_DESCARTAR"),
+  sigla_rx = c("^ti_autoc_(5_9|10_13|14_15|16_17)_abs$", "^ti_tip_(5_9|10_13|14_15|16_17)_pct$",
+               "^ti_econ_16_17_pct$", "^suicidio_ate19_idade_"),
+  ano = c("2022", "2022", "2017", "2007,2020"),
+  nivel = c("uf", "uf", "uf", "uf,municipio"),
+  data = c("2026-11-12", "2026-11-12", "2026-11-12", "2026-11-17"),
+  desc = c("apenas autoconsumo: 2022 (copia de 2019 na fonte) descartado em 4 series",
+           "Lista TIP: % de 2022 das UFs (escala errada na fonte) descartado em 4 faixas",
+           "economicas ou autoconsumo 16-17 anos: % de 2017 (~2x o esperado) descartado",
+           paste("suicidio ate 19 anos por grupos etarios: 2007 e 2020 descartados nas faixas 5-9, 10-14 e 15-19.",
+                 "2007 e copia de 2008 na fonte (71% das celulas iguais; ~10% nos outros pares de anos);",
+                 "em 2020 o total 0-19 diverge das planilhas por sexo, cor/raca e escolaridade, que concordam entre si (PE: 34 contra 25)")),
   stringsAsFactors = FALSE
+)
+.abq_lista <- function(x) trimws(strsplit(x, ",")[[1]])
+
+# Lote 4 (suicídio até 19 anos): o que ficou de fora e por quê; vai para o log a cada execução
+# (usuária Kattine Costa Pedrosa, 2026-11-17).
+.abq_notas_suicidio <- c(
+  "total ate 19 anos carregado so da planilha por escolaridade (igual ao da cor/raca); os totais das planilhas por sexo (municipios de 2017 errados na fonte: PE soma 19 contra 44) e por grupos etarios (2007 e 2020, ver D-009) nao foram carregados",
+  "aba 'Menores de 19 anos' da planilha por grupos etarios nao carregada (vai so ate 2023 e repete o total 0-19)",
+  "faixas de 20 anos ou mais, total de todas as idades e idade ignorada nao carregados (fora do recorte 'ate 19 anos' do lote)",
+  "'Sexo ignorado' nao carregado (todas as celulas sao '-')",
+  "'Menores de 1 ano' e '1 a 4 anos' nao carregados (12 casos em todo o pais em 2000-2025, nenhum em PE)",
+  "cor/raca 2024: em 7 UFs a soma das categorias fica 1 abaixo do total (dado da fonte, mantido como veio)"
 )
 
 # Decisões "-" = 0: a coluna `traco_zero` do catálogo guarda o nome da variável de
 # ambiente que revoga a decisão (NA = o "-" é descartado).
 .abq_traco_decisoes <- data.frame(
-  env  = c("AURORA_ACIDENTES_TRABALHO_TRACO_COMO_ZERO", "AURORA_CASAMENTOS_TRACO_COMO_ZERO"),
-  id   = c("D-002", "D-007"),
-  data = c("2026-11-11", "2026-11-16"),
-  desc = c("planilhas de acidentes de trabalho", "planilhas de casamentos de meninas"),
+  env  = c("AURORA_ACIDENTES_TRABALHO_TRACO_COMO_ZERO", "AURORA_CASAMENTOS_TRACO_COMO_ZERO",
+           "AURORA_SUICIDIO_TRACO_COMO_ZERO"),
+  id   = c("D-002", "D-007", "D-008"),
+  data = c("2026-11-11", "2026-11-16", "2026-11-17"),
+  desc = c("planilhas de acidentes de trabalho", "planilhas de casamentos de meninas",
+           "planilhas de suicidio ate 19 anos"),
   stringsAsFactors = FALSE
 )
 
@@ -205,7 +257,35 @@ ABRINQ_ARQUIVOS <- c(
                "Trabalho infantil 14-17 anos sobre ocupados, trimestral", "% da população ocupada de 14 a 17 anos")
   )
 
+  # --- Lote 4 (2026-11-17): óbitos por suicídio de indivíduos até 19 anos ---
+  suic <- function(arquivo, rotulo, sigla, nm, fantasia) simples(
+    arquivo, rotulo, "valor", paste0("suicidio_ate19_", sigla),
+    paste0("Óbitos por suicídio de indivíduos até 19 anos - ", nm),
+    paste0("Suicídios até 19 anos (", fantasia, ")"), "saúde", "absoluto",
+    traco_zero = "AURORA_SUICIDIO_TRACO_COMO_ZERO")                                     # D-008
+  lote4 <- rbind(
+    suic("suic_escol", "^Número de óbitos de indivíduos de até 19 anos de idade por suicídio$", "total", "Total", "total"),
+    suic("suic_sexo", "^Feminino$",  "sexo_feminino",  "Sexo Feminino",  "sexo feminino"),
+    suic("suic_sexo", "^Masculino$", "sexo_masculino", "Sexo Masculino", "sexo masculino"),
+    suic("suic_cor", "^Branca$",            "cor_branca",   "Cor/raça Branca",   "cor/raça branca"),
+    suic("suic_cor", "^Preta$",             "cor_preta",    "Cor/raça Preta",    "cor/raça preta"),
+    suic("suic_cor", "^Parda$",             "cor_parda",    "Cor/raça Parda",    "cor/raça parda"),
+    suic("suic_cor", "^Amarela$",           "cor_amarela",  "Cor/raça Amarela",  "cor/raça amarela"),
+    suic("suic_cor", "^Indígena$",          "cor_indigena", "Cor/raça Indígena", "cor/raça indígena"),
+    suic("suic_cor", "^Cor/raça ignorada$", "cor_ignorada", "Cor/raça Ignorada", "cor/raça ignorada"),
+    suic("suic_escol", "^Nenhuma escolaridade$",  "escol_nenhuma",  "Escolaridade: Nenhuma",          "nenhuma escolaridade"),
+    suic("suic_escol", "^1 a 3 de anos$",         "escol_1_3",      "Escolaridade: 1 a 3 anos",       "1 a 3 anos de estudo"),
+    suic("suic_escol", "^4 a 7 anos$",            "escol_4_7",      "Escolaridade: 4 a 7 anos",       "4 a 7 anos de estudo"),
+    suic("suic_escol", "^8 a 11 anos$",           "escol_8_11",     "Escolaridade: 8 a 11 anos",      "8 a 11 anos de estudo"),
+    suic("suic_escol", "^12 anos e mais$",        "escol_12_mais",  "Escolaridade: 12 anos ou mais",  "12 anos ou mais de estudo"),
+    suic("suic_escol", "^Escolaridade ignorada$", "escol_ignorada", "Escolaridade: Ignorada",         "escolaridade ignorada"),
+    suic("suic_idade", "^5 a 9 anos de idade$",   "idade_5_9",   "5 a 9 anos",   "5 a 9 anos"),                    # D-009
+    suic("suic_idade", "^10 a 14 anos de idade$", "idade_10_14", "10 a 14 anos", "10 a 14 anos"),
+    suic("suic_idade", "^15 a 19 anos de idade$", "idade_15_19", "15 a 19 anos", "15 a 19 anos")
+  )
+
   rbind(
+    lote4,
     lote3,
     ti_todos,
     acid("acid_cor",   "^Total de acidentes relacionados ao trabalho de crianças e adolescentes", "5_17_total", "Total", "total"),
@@ -315,11 +395,11 @@ ler_abrinq_lote <- function(dir_raw, nivel = c("municipio", "uf")) {
       }
       d <- d[!is.na(d$indicador) & !d$indicador %in% c("-", "ND", "nan", "NA"), ]
 
-      for (j in seq_len(nrow(.abq_exclusoes))) {                              # D-004, D-005, D-006
+      for (j in seq_len(nrow(.abq_exclusoes))) {                              # D-004, D-005, D-006, D-009
         ex <- .abq_exclusoes[j, ]
-        if (nivel == ex$nivel && grepl(ex$sigla_rx, cl$sigla_indicador) &&
+        if (nivel %in% .abq_lista(ex$nivel) && grepl(ex$sigla_rx, cl$sigla_indicador) &&
             .abq_flag(ex$env, "true")) {
-          sai <- d$ano == ex$ano
+          sai <- d$ano %in% as.numeric(.abq_lista(ex$ano))
           n_excl[ex$id] <- n_excl[ex$id] + sum(sai)
           d <- d[!sai, ]
         }
@@ -351,18 +431,17 @@ ler_abrinq_lote <- function(dir_raw, nivel = c("municipio", "uf")) {
                        td$id, td$env, td$desc, nivel))
     }
   }
-  if (nivel == "uf") {
-    desc <- c("D-004" = "apenas autoconsumo: 2022 (copia de 2019 na fonte) descartado em 4 series",
-              "D-005" = "Lista TIP: % de 2022 das UFs (escala errada na fonte) descartado em 4 faixas",
-              "D-006" = "economicas ou autoconsumo 16-17 anos: % de 2017 (~2x o esperado) descartado")
-    for (j in seq_len(nrow(.abq_exclusoes))) {
-      ex <- .abq_exclusoes[j, ]
-      if (.abq_flag(ex$env, "true")) {
-        .abq_log(sprintf("DECISAO REVISAVEL %s (2026-11-12): %s (%d valores). Revogar: %s=false.", ex$id, desc[[ex$id]], n_excl[[ex$id]], ex$env))
-      } else {
-        .abq_log(sprintf("%s REVOGADA por variavel de ambiente %s: dados mantidos como vieram da fonte.", ex$id, ex$env))
-      }
+  for (j in seq_len(nrow(.abq_exclusoes))) {                                        # D-004, D-005, D-006, D-009
+    ex <- .abq_exclusoes[j, ]
+    if (!nivel %in% .abq_lista(ex$nivel)) next
+    if (.abq_flag(ex$env, "true")) {
+      .abq_log(sprintf("DECISAO REVISAVEL %s (%s): %s (%s, %d valores). Revogar: %s=false.", ex$id, ex$data, ex$desc, nivel, n_excl[[ex$id]], ex$env))
+    } else {
+      .abq_log(sprintf("%s REVOGADA por variavel de ambiente %s: dados mantidos como vieram da fonte.", ex$id, ex$env))
     }
+  }
+  if (any(startsWith(names(ABRINQ_ARQUIVOS), "suic_"))) {                          # lote 4: o que ficou de fora e por que
+    for (nota in .abq_notas_suicidio) .abq_log(sprintf("NOTA LOTE SUICIDIO ATE 19 ANOS (2026-11-17, %s): %s", nivel, nota))
   }
   if (nivel == "municipio") {
     .abq_log(sprintf("DECISAO REVISAVEL D-003 (2026-11-11): taxa municipal de mortalidade por saneamento limitada a ate %d (%d valores posteriores descartados; escala inconsistente na fonte). Revogar: AURORA_MORT_SANEA_TAXA_MUN_ANO_MAX=2025.", ano_max_taxa_mun, n_taxa_cortada))
