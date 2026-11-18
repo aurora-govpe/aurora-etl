@@ -1,4 +1,4 @@
-﻿# bibliotecas ----
+# bibliotecas ----
 library(BigDataPE)
 library(bslib)
 library(googledrive)
@@ -32,22 +32,6 @@ shared_iniciativas <- read_rds("data/shared_iniciativas.rds")
 ## reactable ----
 library(reactable)
 tbl_base <- shared_iniciativas %>% 
-  mutate(detalhes = map(
-    id_produto, ~ as.character(
-      tags$div(
-        class = "mlk-details-btn-list",
-        tags$button(
-          class = "mlk-details-btn ",
-          onclick = paste0("mlkRowButtonDetails('", .x, "', '", "main-detalhes_mapa", "');"),
-          tooltip(
-            fontawesome::fa("map", a11y = "sem", title = "Teste"),
-            "Abrir mapa do trecho",
-            options = list(trigger = "hover")
-          )
-        )
-      )
-    )
-  ), .after = ordem) %>% unnest(detalhes) %>% 
   mutate(status_html = case_when(
     status == "Em formulação" ~ '<span class="mlk-hex-status-ef"></span>',
     status == "Em elaboração de projeto" ~ '<span class="mlk-hex-status-ep"></span>',
@@ -63,11 +47,8 @@ tbl_base <- shared_iniciativas %>%
   )) %>%
   mutate(eixo_html = case_when(
     eixo_estrategico == "Conhecimento e inovação" ~ '<span class="mlk-hex-icon-ci"></span>',
-    # leaf (sustentável)
     eixo_estrategico == "Desenvolvimento sustentável" ~ '<span class="mlk-hex-icon-ds"></span>',
-    # heart (saúde e qualidade de vida)
     eixo_estrategico == "Saúde e qualidade de vida" ~ '<span class="mlk-hex-icon-sqv"></span>',
-    # shield-check (segurança e cidadania)
     eixo_estrategico == "Segurança e cidadania" ~ '<span class="mlk-hex-icon-sc"></span>'
   )) %>%
   rowwise() %>% 
@@ -76,9 +57,80 @@ tbl_base <- shared_iniciativas %>%
     status_html = as.character(tooltip(HTML(status_html), status, options = list(html = TRUE, trigger = "hover")))
   ) %>% 
   ungroup() %>%
-  relocate(fonte, .after = secretaria)
+  select(
+    -any_of(
+      c(
+        "eixo_icon", 
+        "status_icon",
+        'endereco',
+        'construtora',
+        'obras_incidentes',
+        'proponentes',
+        'entidades',
+        'uh',
+        'tipologia_das_uh',
+        'status_da_contratacao',
+        'valor_de_contrapartida_do_estado_far_fds_e_retomadas_valor_contratual_aditivado_reforma_no_lar_i',
+        'valor_avaliado_do_terreno_doado',
+        'comunidade',
+        'shapefile',
+        'area_total_m2',
+        'status_de_ocupacao_pcx',
+        'situacao_de_transferencia_de_propriedade_pc',
+        'situacao_de_transferencia_de_propriedade_pcx',
+        'tipo_de_uh_producao_ou_melhoria',
+        'cadastrados',
+        'a_iniciar',
+        'em_andamento',
+        'concluido',
+        'doacao_de_terreno',
+        'obras_nao_incidentes',
+        'processo_seletivo',
+        'financiamento'
+      )
+    )
+  )
 
-# salvar ----
-# Salva APENAS a base de dados em formato tibble
+tbl <- tbl_base %>% 
+  relocate(fonte, .after = secretaria) %>% 
+  reactable(
+    language = reactable::reactableLang(
+      searchPlaceholder = "Pesquisar...",
+      noData = "Nenhum item encontrado.",
+      pageSizeOptions = "Mostrar {rows}",
+      pageInfo = "{rowStart} a {rowEnd} de {rows} linhas",
+      pagePrevious = "\u276e",
+      pageNext = "\u276f",
+      pagePreviousLabel = "Pág. anterior",
+      pageNextLabel = "Pág. seguinte"
+    ),
+    theme = reactableTheme(
+      borderColor = "#dfe2e5",
+      stripedColor = "#f6f8fa",
+      highlightColor = "#f0f5f9",
+      cellPadding = "8px 12px",
+      cellStyle = list(
+        display = "flex",
+        flexDirection = "column",
+        justifyContent = "center"
+      )
+    ),
+    wrap = TRUE,
+    fullWidth = TRUE,
+    striped = TRUE,
+    filterable = TRUE,
+    searchable = FALSE,
+    outlined = FALSE,
+    bordered = FALSE,
+    highlight = TRUE,
+    compact = TRUE,
+    pagination = TRUE,
+    defaultPageSize = 10,
+    showPageSizeOptions = TRUE,
+    pageSizeOptions = c(5, 10, 20, 50, 100),
+    showSortable = TRUE,
+    defaultSorted = "ordem",
+    defaultSortOrder = "asc"
+  )
+
 write_rds(tbl_base, "app_aurora/data/tbl_base_2.rds")
-

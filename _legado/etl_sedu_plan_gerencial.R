@@ -1,4 +1,4 @@
-﻿# bibliotecas ----
+# bibliotecas ----
 library(dplyr)
 library(googledrive)
 library(googlesheets4)

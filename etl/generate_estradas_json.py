@@ -1,9 +1,27 @@
 import json
+import os
 import pandas as pd
 import numpy as np
 
-print("Lendo df_iniciativas.parquet...")
-df = pd.read_parquet('data/parquet/df_iniciativas.parquet')
+# ==============================================================================
+# RESOLUÇÃO CENTRALIZADA DE DIRETÓRIOS
+# ==============================================================================
+DIR_OUT = os.environ.get('AURORA_DATA_DIR', r'C:\dados\aurora')
+parquet_path = os.path.join(DIR_OUT, 'parquet', 'df_iniciativas.parquet')
+if not os.path.exists(parquet_path):
+    # Fallback local se rodar dentro da pasta data
+    alt_parquet = os.path.join('data', 'parquet', 'df_iniciativas.parquet')
+    if os.path.exists(alt_parquet):
+        parquet_path = alt_parquet
+
+geojson_path = os.path.join(DIR_OUT, 'geojson', 'obras_notion_geometrias2.geojson')
+if not os.path.exists(geojson_path):
+    alt_geo = os.path.join('data', 'geojson', 'obras_notion_geometrias2.geojson')
+    if os.path.exists(alt_geo):
+        geojson_path = alt_geo
+
+print(f"Lendo iniciativas de: {parquet_path}...")
+df = pd.read_parquet(parquet_path)
 der = df[df['fonte'].astype(str).str.upper() == 'DER'].copy()
 
 # Tratamento e normalizacao
@@ -24,8 +42,8 @@ def normalize_status(st):
 
 der['status_norm'] = der['status'].apply(normalize_status)
 
-print("Lendo GeoJSON de rodovias...")
-with open('data/geojson/obras_notion_geometrias2.geojson', 'r', encoding='utf-8') as f:
+print(f"Lendo GeoJSON de rodovias de: {geojson_path}...")
+with open(geojson_path, 'r', encoding='utf-8') as f:
     geo = json.load(f)
 
 # Resumo por rodovia
@@ -121,7 +139,27 @@ output_payload = {
     'geojson': geo
 }
 
-with open('www/data/estradas_pe.json', 'w', encoding='utf-8') as f:
-    json.dump(output_payload, f, ensure_ascii=False, indent=2)
+# Salva nos destinos oficiais
+destinos_saida = [
+    os.path.join(DIR_OUT, 'estradas_pe.json'),
+    os.path.join(DIR_OUT, 'json', 'estradas_pe.json')
+]
 
-print("Sucesso! Arquivo www/data/estradas_pe.json gerado.")
+for dest in destinos_saida:
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    try:
+        with open(dest, 'w', encoding='utf-8') as f:
+            json.dump(output_payload, f, ensure_ascii=False, indent=2)
+        print(f"✅ Arquivo salvo em: {dest}")
+    except Exception as e:
+        print(f"Aviso ao salvar {dest}: {e}")
+
+# Fallback se existir pasta www/data local
+if os.path.exists('www/data'):
+    try:
+        with open('www/data/estradas_pe.json', 'w', encoding='utf-8') as f:
+            json.dump(output_payload, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
+print("Sucesso! ETL de estradas concluído.")
