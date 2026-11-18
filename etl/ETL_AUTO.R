@@ -62,6 +62,7 @@ rotinas <- list(
     'municipios/atualizar_gestores_brasilapi.R',
     'municipios/etl_caracterizacao_ibge_tse.R', 
     'municipios/etl_ficha_municipal.R',
+    'empresas/etl_empresas.R',
     'R/gerador_pdfs.R'
   ),
   
