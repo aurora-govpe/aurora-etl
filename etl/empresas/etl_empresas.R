@@ -15,19 +15,24 @@
 # ==============================================================================
 
 # 1. Carrega caminhos padronizados do projeto
-if (file.exists("R/paths.R")) {
-  source("R/paths.R")
-} else if (file.exists("../../R/paths.R")) {
-  source("../../R/paths.R")
+caminhos_paths <- c("R/paths.R", "paths.R", "../paths.R", "../../R/paths.R", "etl/paths.R")
+for (p in caminhos_paths) {
+  if (file.exists(p)) {
+    source(p)
+    break
+  }
 }
 
 message(">>> [ETL EMPRESAS] Iniciando processamento unificado...")
 
 # Caminho do motor em Python (alta performance para bases de ~2 milhões de registros)
-caminho_script_py <- file.path("etl", "empresas", "etl_empresas.py")
-if (!file.exists(caminho_script_py)) {
-  caminho_script_py <- file.path(getwd(), "etl_empresas.py")
-}
+candidatos_py <- c(
+  file.path("etl", "empresas", "etl_empresas.py"),
+  file.path("empresas", "etl_empresas.py"),
+  file.path(getwd(), "etl_empresas.py"),
+  file.path(getwd(), "empresas", "etl_empresas.py")
+)
+caminho_script_py <- candidatos_py[file.exists(candidatos_py)][1]
 
 # Tenta executar o motor de alta performance em Python
 python_bin <- Sys.which("python")
