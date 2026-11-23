@@ -756,28 +756,28 @@ df_indicadores_regioes %>%
     file.path(DIR_OUT_AURORA, "parquet/df_indicadores_regioes.parquet")
   )
 
-
-# Exportação para Google Sheets ----
-cli::cli_alert_info("Iniciando exportação para o Google Sheets...")
-
-# 1. Autenticação via Service Account (padrão DIR_RAW_AURORA)
-google_token_path <- file.path(DIR_RAW_AURORA, "r-sheets-hugo-0788cc358cb5.json")
-
-if (file.exists(google_token_path)) {
-  googlesheets4::gs4_auth(path = google_token_path)
-} else {
-  cli::cli_warn("Token JSON não encontrado em {.path {google_token_path}}. Tentando autenticação padrão...")
-  googlesheets4::gs4_auth()
-}
-
-# 2. ID da Planilha de destino
-sheet_id_destino <- "1668WVwrTafj_aycva5uHAgiBSYp1sPA0NrxwIBwAlSQ"
-
-# 3. Escrita da base consolidada na primeira aba (gid = 0)
-googlesheets4::sheet_write(
-  data  = df_indicadores_regioes,
-  ss    = sheet_id_destino,
-  sheet = 1
-)
-
-cli::cli_alert_success("Base {.val df_indicadores_ufs} exportada com sucesso para o Google Sheets!")
+# 
+# # Exportação para Google Sheets ----
+# cli::cli_alert_info("Iniciando exportação para o Google Sheets...")
+# 
+# # 1. Autenticação via Service Account (padrão DIR_RAW_AURORA)
+# google_token_path <- file.path(DIR_RAW_AURORA, "r-sheets-hugo-0788cc358cb5.json")
+# 
+# if (file.exists(google_token_path)) {
+#   googlesheets4::gs4_auth(path = google_token_path)
+# } else {
+#   cli::cli_warn("Token JSON não encontrado em {.path {google_token_path}}. Tentando autenticação padrão...")
+#   googlesheets4::gs4_auth()
+# }
+# 
+# # 2. ID da Planilha de destino
+# sheet_id_destino <- "1668WVwrTafj_aycva5uHAgiBSYp1sPA0NrxwIBwAlSQ"
+# 
+# # 3. Escrita da base consolidada na primeira aba (gid = 0)
+# googlesheets4::sheet_write(
+#   data  = df_indicadores_regioes,
+#   ss    = sheet_id_destino,
+#   sheet = 1
+# )
+# 
+# cli::cli_alert_success("Base {.val df_indicadores_ufs} exportada com sucesso para o Google Sheets!")

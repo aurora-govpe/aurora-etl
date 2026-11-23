@@ -29,6 +29,7 @@ rotinas <- list(
     'etl_03_iniciativas_ipa_sepe.R',
     'etl_04_seduh.R',
     'etl_05_iniciativas_join.R',
+    'generate_estradas_json.py',
     'fiscal/etl_emendas.R',
     'fiscal/etl_op_cred.R',
     'fiscal/etl_execucao_bdpe.R', 
@@ -44,6 +45,7 @@ rotinas <- list(
   semanal = c(
     'rpa/rpa_emendas.py',
     'rpa/rpa_cadunico.py',
+    'rpa/rpa_ppcof.py',
     'municipios/etl_vulnerabilidade_social.R',
     'etl_cozinhas.R',
     'R/gerador_pdfs.R',
@@ -63,7 +65,12 @@ rotinas <- list(
     'municipios/atualizar_gestores_brasilapi.R',
     'municipios/etl_caracterizacao_ibge_tse.R', 
     'municipios/etl_ficha_municipal.R',
-    'municipios/etl_indicadores_ufs.R'
+    'municipios/etl_indicadores_regioes_pe.R',
+    'empresas/etl_empresas.R',
+    'municipios/etl_indicadores_ufs.R',
+    'agua/etl_adutoras.R',
+    'municipios/etl_consorcios_pernambuco.R',
+    'municipios/etl_converter_rds_para_parquet.R'
   ),
   
   # ROTINAS BIMESTRAIS
@@ -83,7 +90,13 @@ rotinas <- list(
     'municipios/etl_urbanizacao.R',
     'municipios/etl_demografia_pe.R',
     'municipios/etl_indicadores_ibge_sidra.R',
-    'municipios/etl_deficit_hab_fjp.R'
+    'municipios/etl_deficit_hab_fjp.R', 
+    'demografia/etl_indicadores_demograficos.R',
+    'demografia/etl_indicadores_demograficos_rd.R',
+    'regic/regic_main.R',
+    'regic/etl_mapa_rede_regic.R',
+    'municipios/etl_matriz_desenvolvimento_regional.R',
+    'municipios/etl_infocom_servicos.R'
   ),
   
   # ROTINAS DE SERVIDOR / ESPECIAIS
