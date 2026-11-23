@@ -58,9 +58,11 @@ if (!exists("DIR_RAW_AURORA")) DIR_RAW_AURORA <- "C:/dados/dados brutos/aurora"
 if (!exists("DIR_OUT_AURORA")) DIR_OUT_AURORA <- "C:/dados/aurora"
 
 dir_raw_econ <- file.path(DIR_RAW_AURORA, "economia")
+dir_raw_textil <- file.path(dir_raw_econ, "textil")
 dir_out_pqt  <- file.path(DIR_OUT_AURORA, "parquet")
 
 if (!dir.exists(dir_raw_econ)) dir.create(dir_raw_econ, recursive = TRUE, showWarnings = FALSE)
+if (!dir.exists(dir_raw_textil)) dir.create(dir_raw_textil, recursive = TRUE, showWarnings = FALSE)
 if (!dir.exists(dir_out_pqt))  dir.create(dir_out_pqt, recursive = TRUE, showWarnings = FALSE)
 
 cat("🚢 [COMEX] Iniciando extração de Comércio Exterior (ComexStat / MDIC - Pernambuco)...\n")
@@ -153,11 +155,34 @@ df_ncm_imp <- bind_rows(compact(lista_ncm_imp)) %>% mutate(tipo_fluxo = "Importa
 
 df_comex_ncm_raw <- bind_rows(df_ncm_exp, df_ncm_imp)
 
-# 7. Gravação da Camada Bruta (Raw / Bronze) ----------------------------------
+# 7. Gravação da Camada Bruta (Raw / Bronze - Geral e Recorte Têxtil) --------
 saveRDS(
   list(municipal_sh4 = df_comex_muni_raw, estadual_ncm = df_comex_ncm_raw),
   file.path(dir_raw_econ, "comex_pe_bruto.rds")
 )
+
+# Filtro dos capítulos têxteis e calçados (Capítulos SH 50 a 64)
+capitulos_textil <- sprintf("%02d", 50:64)
+
+df_muni_textil_raw <- if (nrow(df_comex_muni_raw) > 0) {
+  col_h <- names(df_comex_muni_raw)[str_detect(names(df_comex_muni_raw), "heading")][1]
+  if (!is.na(col_h)) {
+    df_comex_muni_raw %>% filter(substr(str_pad(as.character(.data[[col_h]]), 4, "left", "0"), 1, 2) %in% capitulos_textil)
+  } else df_comex_muni_raw
+} else df_comex_muni_raw
+
+df_ncm_textil_raw <- if (nrow(df_comex_ncm_raw) > 0) {
+  col_n <- names(df_comex_ncm_raw)[str_detect(names(df_comex_ncm_raw), "ncm")][1]
+  if (!is.na(col_n)) {
+    df_comex_ncm_raw %>% filter(substr(str_pad(as.character(.data[[col_n]]), 8, "left", "0"), 1, 2) %in% capitulos_textil)
+  } else df_comex_ncm_raw
+} else df_comex_ncm_raw
+
+saveRDS(
+  list(municipal_sh4_textil = df_muni_textil_raw, estadual_ncm_textil = df_ncm_textil_raw),
+  file.path(dir_raw_textil, "comex_pe_textil_bruto.rds")
+)
+cat(glue::glue("💾 [Prata - Têxtil] Salvo recorte têxtil comex: {file.path(dir_raw_textil, 'comex_pe_textil_bruto.rds')}\n"))
 
 # 8. Tratamento e Gravação da Camada Curada (Ouro / Parquet) -------------------
 if (nrow(df_comex_muni_raw) > 0) {

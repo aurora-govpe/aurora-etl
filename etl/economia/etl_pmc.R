@@ -44,29 +44,28 @@ if (!exists("DIR_RAW_AURORA")) DIR_RAW_AURORA <- "C:/dados/dados brutos/aurora"
 if (!exists("DIR_OUT_AURORA")) DIR_OUT_AURORA <- "C:/dados/aurora"
 
 dir_raw_econ <- file.path(DIR_RAW_AURORA, "economia")
+dir_raw_textil <- file.path(dir_raw_econ, "textil")
 dir_out_pqt  <- file.path(DIR_OUT_AURORA, "parquet")
 
 if (!dir.exists(dir_raw_econ)) dir.create(dir_raw_econ, recursive = TRUE, showWarnings = FALSE)
+if (!dir.exists(dir_raw_textil)) dir.create(dir_raw_textil, recursive = TRUE, showWarnings = FALSE)
 if (!dir.exists(dir_out_pqt))  dir.create(dir_out_pqt, recursive = TRUE, showWarnings = FALSE)
 
 cat("🛍️ [PMC] Iniciando extração da Pesquisa Mensal de Comércio (IBGE/SIDRA)...\n")
 
 # 2. Requisições à API SIDRA ---------------------------------------------------
-# Tabela 8880 (Variações %):
-# /v/11707,11708,11709,11710 (Volume de vendas)
-#    11707 = Variação mês / mesmo mês do ano anterior (%)
-#    11708 = Variação acumulada no ano (%)
-#    11709 = Variação mês / mês anterior com ajuste sazonal (%)
-#    11710 = Variação acumulada em 12 meses (%)
-# /c11046/all : Atividades do comércio (incluindo Varejo Geral e Tecidos, vestuário e calçados)
+# Tabela 8882 (Índices e Variações por Atividades - Base 2022 = 100):
+# /v/7169,7170,11708,11709,11710,11711
+# /c11046/56733,56734 : Receita Nominal e Volume de Vendas
+# /c85/all : Todas as atividades (inclui 90673 - Tecidos, vestuário e calçados)
 # /n3/26, n1/1 : Pernambuco (26) e Brasil (1)
 # /p/last 36   : Últimos 36 meses
 
 urls_pmc <- c(
   # Pernambuco (26)
-  "https://apisidra.ibge.gov.br/values/t/8880/n3/26/v/11707,11708,11709,11710/p/last%2036/c11046/all",
+  "https://apisidra.ibge.gov.br/values/t/8882/n3/26/v/7169,7170,11708,11709,11710,11711/p/last%2036/c11046/56733,56734/c85/all",
   # Brasil (1)
-  "https://apisidra.ibge.gov.br/values/t/8880/n1/1/v/11707,11708,11709,11710/p/last%2036/c11046/all"
+  "https://apisidra.ibge.gov.br/values/t/8882/n1/1/v/7169,7170,11708,11709,11710,11711/p/last%2036/c11046/56733,56734/c85/all"
 )
 
 cat("📥 Baixando séries da PMC via API SIDRA (PE e BR)...\n")
@@ -90,10 +89,18 @@ df_pmc_bruto <- bind_rows(lista_pmc)
 if (nrow(df_pmc_bruto) == 0) {
   warning("⚠️ Não foi possível obter novos dados da PMC. Mantendo base anterior se existir.")
 } else {
-  # 3. Gravação da Camada Bruta ------------------------------------------------
+  # 3. Gravação da Camada Bruta (Geral e Subpasta Textil) -----------------------
   arquivo_raw_rds <- file.path(dir_raw_econ, "pmc_comercio_bruto.rds")
   saveRDS(df_pmc_bruto, arquivo_raw_rds)
-  cat(glue::glue("💾 [Prata] Arquivo salvo em: {arquivo_raw_rds} ({nrow(df_pmc_bruto)} linhas)\n"))
+  cat(glue::glue("💾 [Prata] Arquivo geral salvo em: {arquivo_raw_rds} ({nrow(df_pmc_bruto)} linhas)\n"))
+  
+  # Filtro e gravação na subpasta textil
+  df_pmc_textil_bruto <- df_pmc_bruto %>%
+    filter(str_detect(`Atividades`, regex("tecido|vestu|calçado|calcado", ignore_case = TRUE)))
+  
+  arquivo_textil_rds <- file.path(dir_raw_textil, "pmc_comercio_textil_bruto.rds")
+  saveRDS(df_pmc_textil_bruto, arquivo_textil_rds)
+  cat(glue::glue("💾 [Prata - Têxtil] Arquivo salvo em: {arquivo_textil_rds} ({nrow(df_pmc_textil_bruto)} linhas)\n"))
   
   # 4. Tratamento e Segmentação Setorial (Camada Ouro) -------------------------
   df_pmc_ouro <- df_pmc_bruto %>%

@@ -42,9 +42,11 @@ if (!exists("DIR_OUT_AURORA")) DIR_OUT_AURORA <- "C:/dados/aurora"
 
 # 2. Definição dos diretórios Prata e Ouro ---------------------------------------
 dir_prata <- file.path(DIR_RAW_AURORA, "economia")
+dir_textil <- file.path(dir_prata, "textil")
 dir_ouro  <- file.path(DIR_OUT_AURORA, "parquet")
 
 if (!dir.exists(dir_prata)) dir.create(dir_prata, recursive = TRUE, showWarnings = FALSE)
+if (!dir.exists(dir_textil)) dir.create(dir_textil, recursive = TRUE, showWarnings = FALSE)
 if (!dir.exists(dir_ouro))  dir.create(dir_ouro, recursive = TRUE, showWarnings = FALSE)
 
 cat("🏭 [PIM-PF] Iniciando extração da Pesquisa Industrial Mensal (IBGE/SIDRA)...\n")
@@ -92,7 +94,18 @@ if (nrow(df_pim_bruto) == 0) {
   # 4. Gravação da Camada Prata (Raw / Dados Brutos) ------------------------------
   arquivo_prata_rds <- file.path(dir_prata, "pim_pf_bruto.rds")
   saveRDS(df_pim_bruto, arquivo_prata_rds)
-  cat(glue::glue("💾 [Prata] Arquivo salvo em: {arquivo_prata_rds} ({nrow(df_pim_bruto)} linhas)\n"))
+  cat(glue::glue("💾 [Prata] Arquivo geral salvo em: {arquivo_prata_rds} ({nrow(df_pim_bruto)} linhas)\n"))
+
+  # Recorte e gravação na subpasta textil
+  col_atv_raw <- names(df_pim_bruto)[str_detect(names(df_pim_bruto), regex("atividades|cnae", ignore_case = TRUE))][1]
+  df_pim_textil_bruto <- if (!is.na(col_atv_raw)) {
+    df_pim_bruto %>% filter(str_detect(.data[[col_atv_raw]], regex("vestu|confec|t[eê]xt", ignore_case = TRUE)))
+  } else {
+    df_pim_bruto
+  }
+  arquivo_textil_rds <- file.path(dir_textil, "pim_pf_textil_confeccao_bruto.rds")
+  saveRDS(df_pim_textil_bruto, arquivo_textil_rds)
+  cat(glue::glue("💾 [Prata - Têxtil] Arquivo salvo em: {arquivo_textil_rds} ({nrow(df_pim_textil_bruto)} linhas)\n"))
   
   # 5. Tratamento, limpeza e estruturação (Camada Ouro) -------------------------
   cat("⚙️ Processando séries temporais da indústria para a camada Ouro...\n")

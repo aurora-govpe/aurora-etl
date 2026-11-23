@@ -49,9 +49,11 @@ if (!exists("DIR_RAW_AURORA")) DIR_RAW_AURORA <- "C:/dados/dados brutos/aurora"
 if (!exists("DIR_OUT_AURORA")) DIR_OUT_AURORA <- "C:/dados/aurora"
 
 dir_raw_econ <- file.path(DIR_RAW_AURORA, "economia")
+dir_raw_textil <- file.path(dir_raw_econ, "textil")
 dir_out_pqt  <- file.path(DIR_OUT_AURORA, "parquet")
 
 if (!dir.exists(dir_raw_econ)) dir.create(dir_raw_econ, recursive = TRUE, showWarnings = FALSE)
+if (!dir.exists(dir_raw_textil)) dir.create(dir_raw_textil, recursive = TRUE, showWarnings = FALSE)
 if (!dir.exists(dir_out_pqt))  dir.create(dir_out_pqt, recursive = TRUE, showWarnings = FALSE)
 
 cat("👔 [CAGED] Iniciando extração e processamento do Novo CAGED (Pernambuco)...\n")
@@ -118,8 +120,18 @@ if (is.null(dados_caged_pe) || nrow(dados_caged_pe) == 0) {
 } else {
   cat(glue::glue("📊 Registros brutos de movimentação carregados para PE: {nrow(dados_caged_pe)}\n"))
   
-  # Salva camada bruta em RDS
+  # Salva camada bruta em RDS (Geral e Recorte Têxtil)
   saveRDS(dados_caged_pe, file.path(dir_raw_econ, "caged_pe_movimentacoes_bruto.rds"))
+  cat(glue::glue("💾 [Prata] Arquivo geral salvo: {file.path(dir_raw_econ, 'caged_pe_movimentacoes_bruto.rds')}\n"))
+
+  # Filtro e salvamento na subpasta textil
+  cnae_clean <- str_pad(as.character(dados_caged_pe$subclasse), width = 7, side = "left", pad = "0")
+  cnae_div_raw <- substr(cnae_clean, 1, 2)
+  mask_textil_raw <- cnae_div_raw %in% c("13", "14") | str_starts(cnae_clean, "478")
+  dados_caged_textil <- dados_caged_pe[mask_textil_raw, ]
+  
+  saveRDS(dados_caged_textil, file.path(dir_raw_textil, "caged_pe_textil_bruto.rds"))
+  cat(glue::glue("💾 [Prata - Têxtil] Salvo recorte têxtil: {file.path(dir_raw_textil, 'caged_pe_textil_bruto.rds')} ({nrow(dados_caged_textil)} linhas)\n"))
   
   # 5. Tratamento e Agregações Analíticas ---------------------------------------
   # Identifica divisão CNAE (primeiros 2 dígitos da subclasse)

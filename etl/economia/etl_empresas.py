@@ -41,6 +41,9 @@ DIR_OUT = os.getenv(
 )
 
 DIR_RAW_ECON = os.path.join(DIR_RAW, "economia")
+DIR_RAW_TEXTIL = os.path.join(DIR_RAW_ECON, "textil")
+os.makedirs(DIR_RAW_TEXTIL, exist_ok=True)
+
 PATH_ATIVAS = os.path.join(DIR_RAW_ECON, "df_SEPLAG_EMPRESAS_ATIVAS.parquet") if os.path.exists(os.path.join(DIR_RAW_ECON, "df_SEPLAG_EMPRESAS_ATIVAS.parquet")) else os.path.join(DIR_RAW, "empresas", "df_SEPLAG_EMPRESAS_ATIVAS.parquet")
 PATH_INATIVAS = os.path.join(DIR_RAW_ECON, "df_SEPLAG_EMPRESAS_INATIVAS.parquet") if os.path.exists(os.path.join(DIR_RAW_ECON, "df_SEPLAG_EMPRESAS_INATIVAS.parquet")) else os.path.join(DIR_RAW, "empresas", "df_SEPLAG_EMPRESAS_INATIVAS.parquet")
 PATH_GEO_MUNIS = os.path.join(DIR_OUT, "geojson", "pernambuco_municipios.geojson")
@@ -296,6 +299,22 @@ def processar_etl():
 
     df_inativas["grande_setor"] = df_inativas["cnae"].apply(mapear_grande_setor)
     df_inativas["cnae_divisao"] = df_inativas["cnae"].fillna(0).astype(int).astype(str).str.zfill(7).str[:2]
+
+    # Gravação do Recorte Bruto de Empresas Têxteis na subpasta textil
+    def _is_cnae_textil_raw(cnae_val, cnae_div):
+        try:
+            c_str = str(int(float(cnae_val))).zfill(7)
+        except Exception:
+            c_str = str(cnae_val)
+        d_str = str(cnae_div).zfill(2)
+        return d_str in ("13", "14") or c_str.startswith("478")
+
+    mask_atv_textil = df_ativas.apply(lambda r: _is_cnae_textil_raw(r["cnae"], r["cnae_divisao"]), axis=1)
+    df_ativas[mask_atv_textil].to_parquet(os.path.join(DIR_RAW_TEXTIL, "df_SEPLAG_EMPRESAS_ATIVAS_textil.parquet"), index=False)
+    
+    mask_inativ_textil = df_inativas.apply(lambda r: _is_cnae_textil_raw(r["cnae"], r["cnae_divisao"]), axis=1)
+    df_inativas[mask_inativ_textil].to_parquet(os.path.join(DIR_RAW_TEXTIL, "df_SEPLAG_EMPRESAS_INATIVAS_textil.parquet"), index=False)
+    print(f"      [Textil Raw] Salvo empresas ativas têxteis: {mask_atv_textil.sum():,} | inativas: {mask_inativ_textil.sum():,}")
 
     # -------------------------------------------------------------------------
     # 3. GERAÇÃO DOS INDICADORES CONSOLIDADOS
