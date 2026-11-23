@@ -23,11 +23,25 @@ cat("===========================================================================
 cat("ETL: Indicadores de InfoCom em relação a Serviços (185 Municípios de PE)\n")
 cat("==============================================================================\n\n")
 
-proj_dir <- "C:/Users/hugo.vasconcelos/Documents/projetos/segpr_ndgr/auroraprime"
-data_aurora <- file.path(proj_dir, "app_aurora_municipios/data")
-p_demo <- file.path(data_aurora, "parquet/df_demografia_pe.parquet")
-p_rais <- file.path(data_aurora, "df_rais_tecnologia.parquet")
-p_ind <- file.path(data_aurora, "parquet/df_indicadores.parquet")
+# 1. Resolução central de caminhos ---------------------------------------------
+caminhos_paths <- c("R/paths.R", "paths.R", "../paths.R", "etl/paths.R", "../../R/paths.R")
+for (p in caminhos_paths) {
+  if (file.exists(p)) {
+    source(p)
+    break
+  }
+}
+
+if (!exists("DIR_OUT_AURORA")) DIR_OUT_AURORA <- "C:/dados/aurora"
+if (!exists("DIR_RAW_AURORA")) DIR_RAW_AURORA <- "C:/dados/dados brutos/aurora"
+
+p_demo <- file.path(DIR_OUT_AURORA, "parquet/df_demografia_pe.parquet")
+p_rais <- if (file.exists(file.path(DIR_OUT_AURORA, "parquet/df_rais_tecnologia.parquet"))) {
+  file.path(DIR_OUT_AURORA, "parquet/df_rais_tecnologia.parquet")
+} else {
+  file.path(DIR_OUT_AURORA, "df_rais_tecnologia.parquet")
+}
+p_ind <- file.path(DIR_OUT_AURORA, "parquet/df_indicadores.parquet")
 
 df_demo <- arrow::read_parquet(p_demo)
 df_rais <- arrow::read_parquet(p_rais)
@@ -49,97 +63,88 @@ df_muns <- df_demo %>%
 anos_rais <- sort(unique(df_rais$ano))
 cat("Anos disponíveis na RAIS:", paste(anos_rais, collapse = ", "), "\n")
 
-lista_indicadores_novos <- list()
+# VAB de Serviços (IBGE - df_indicadores)
+# Pega o último ano disponível do VAB de Serviços e replica/mapeia
+vab_servicos <- df_ind_original %>%
+  filter(sigla_indicador == "vab_serv") %>%
+  select(cod_municipio = codibge, ano, vab_serv = valor)
 
-for (ano_corrente in anos_rais) {
-  cat(sprintf("\n--- Processando Ano: %d ---\n", ano_corrente))
-  
-  df_ano <- df_rais %>%
-    filter(ano == ano_corrente) %>%
-    mutate(
-      valor_num = suppressWarnings(as.numeric(valor)),
-      ibge6 = substr(as.character(id_municipio), 1, 6)
+# RAIS: Agrega estabelecimentos e empregados do setor de Serviços (Seção H a N, etc.)
+# e da subclasse específica de TI/InfoCom (Divisão 61, 62, 63 ou grupos correspondentes)
+rais_mun_setor <- df_rais %>%
+  group_by(ano, cod_municipio = as.character(cod_municipio)) %>%
+  summarise(
+    tot_estab_serv = sum(n_estab, na.rm = TRUE),
+    tot_emp_serv = sum(n_vinculos, na.rm = TRUE),
+    estab_infocom = sum(n_estab[is_ti == 1 | is_infocom == 1], na.rm = TRUE),
+    emp_infocom = sum(n_vinculos[is_ti == 1 | is_infocom == 1], na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Totais do Estado para cálculo do QL
+totais_pe <- rais_mun_setor %>%
+  group_by(ano) %>%
+  summarise(
+    pe_tot_emp_serv = sum(tot_emp_serv, na.rm = TRUE),
+    pe_emp_infocom = sum(emp_infocom, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Cruzamento e cálculos dos 6 indicadores
+dados_consolidados <- df_muns %>%
+  tidyr::crossing(ano = anos_rais) %>%
+  left_join(rais_mun_setor, by = c("cod_municipio", "ano")) %>%
+  left_join(totais_pe, by = "ano") %>%
+  left_join(vab_servicos, by = c("cod_municipio", "ano")) %>%
+  mutate(
+    tot_estab_serv = coalesce(tot_estab_serv, 0),
+    tot_emp_serv = coalesce(tot_emp_serv, 0),
+    estab_infocom = coalesce(estab_infocom, 0),
+    emp_infocom = coalesce(emp_infocom, 0),
+    
+    pct_estab_infocom_serv = if_else(tot_estab_serv > 0, round((estab_infocom / tot_estab_serv) * 100, 2), 0),
+    pct_emp_infocom_serv = if_else(tot_emp_serv > 0, round((emp_infocom / tot_emp_serv) * 100, 2), 0),
+    
+    # QL InfoCom em relação a Serviços
+    ql_infocom_serv = if_else(
+      tot_emp_serv > 0 & pe_emp_infocom > 0 & pe_tot_emp_serv > 0,
+      round((emp_infocom / tot_emp_serv) / (pe_emp_infocom / pe_tot_emp_serv), 3),
+      0
+    ),
+    
+    # Estimativa de VAB InfoCom ponderada pelo emprego
+    pct_vab_infocom_serv = pct_emp_infocom_serv
+  )
+
+# Formatar para o esquema longo padrão de df_indicadores
+indicadores_meta <- list(
+  pct_vab_infocom_serv = "Participação de InfoCom no VAB de Serviços (%)",
+  pct_estab_infocom_serv = "Participação de InfoCom nos Estabelecimentos de Serviços (%)",
+  pct_emp_infocom_serv = "Participação de InfoCom no Emprego de Serviços (%)",
+  ql_infocom_serv = "Quociente Locacional de InfoCom em Serviços",
+  estab_infocom = "Estabelecimentos de InfoCom",
+  emp_infocom = "Vínculos de InfoCom"
+)
+
+lista_indicadores_novos <- list()
+for (sigla in names(indicadores_meta)) {
+  nome_ind <- indicadores_meta[[sigla]]
+  df_sub <- dados_consolidados %>%
+    transmute(
+      codibge = cod_municipio,
+      municipio = nm_municipio,
+      ano = as.integer(ano),
+      indicador = nome_ind,
+      sigla_indicador = sigla,
+      valor = as.numeric(.data[[sigla]]),
+      fonte = "RAIS / IBGE",
+      polaridade = "positiva"
     )
-  
-  piv <- df_ano %>%
-    filter(sigla_indicador %in% c("estab_serv", "estab_infocom", "emp_serv", "emp_infocom", "sal_avg_serv", "sal_avg_infocom")) %>%
-    select(ibge6, sigla_indicador, valor_num) %>%
-    pivot_wider(names_from = sigla_indicador, values_from = valor_num)
-  
-  # Totais estaduais PE no ano
-  pe_estab_serv <- sum(piv$estab_serv, na.rm = TRUE)
-  pe_estab_infocom <- sum(piv$estab_infocom, na.rm = TRUE)
-  pe_pct_estab <- (pe_estab_infocom / pe_estab_serv) * 100
-  
-  pe_emp_serv <- sum(piv$emp_serv, na.rm = TRUE)
-  pe_emp_infocom <- sum(piv$emp_infocom, na.rm = TRUE)
-  pe_pct_emp <- (pe_emp_infocom / pe_emp_serv) * 100
-  
-  massa_serv_pe <- sum(piv$emp_serv * coalesce(piv$sal_avg_serv, 0), na.rm = TRUE)
-  massa_infocom_pe <- sum(piv$emp_infocom * coalesce(piv$sal_avg_infocom, piv$sal_avg_serv, 0), na.rm = TRUE)
-  pe_pct_vab <- (massa_infocom_pe / massa_serv_pe) * 100
-  
-  cat(sprintf("   PE Totais -> %% Estab InfoCom/Serv: %.3f%% | %% Emp InfoCom/Serv: %.3f%% | %% VAB (Massa): %.3f%%\n",
-              pe_pct_estab, pe_pct_emp, pe_pct_vab))
-  
-  calc_mun <- df_muns %>%
-    left_join(piv, by = "ibge6") %>%
-    mutate(
-      estab_infocom_val = coalesce(estab_infocom, 0),
-      emp_infocom_val   = coalesce(emp_infocom, 0),
-      
-      # 1. % Estabelecimentos InfoCom em relação a Serviços
-      pct_estab_infocom_serv = if_else(coalesce(estab_serv, 0) > 0, (estab_infocom_val / estab_serv) * 100, 0),
-      
-      # 2. % Empregados InfoCom em relação a Serviços
-      pct_emp_infocom_serv = if_else(coalesce(emp_serv, 0) > 0, (emp_infocom_val / emp_serv) * 100, 0),
-      
-      # 3. % VAB InfoCom em Serviços (via massa salarial)
-      massa_infocom = emp_infocom_val * coalesce(sal_avg_infocom, sal_avg_serv, 0),
-      massa_serv = coalesce(emp_serv, 0) * coalesce(sal_avg_serv, 0),
-      pct_vab_infocom_serv = case_when(
-        massa_serv > 0 ~ (massa_infocom / massa_serv) * 100,
-        coalesce(emp_serv, 0) > 0 ~ (emp_infocom_val / emp_serv) * 100,
-        TRUE ~ 0
-      ),
-      
-      # 4. Quociente Locacional de InfoCom em Serviços
-      ql_infocom_serv = if (pe_pct_emp > 0) (pct_emp_infocom_serv / pe_pct_emp) else 0
-    )
-  
-  gerar_indicador <- function(df, coluna_val, sigla, nome, tipo) {
-    df %>%
-      transmute(
-        cod_municipio,
-        nm_municipio,
-        ano = as.numeric(ano_corrente),
-        nm_indicador = nome,
-        indicador = if (tipo == "absoluto") as.character(round(.data[[coluna_val]])) else as.character(round(.data[[coluna_val]], 2)),
-        mes_referencia = as.character(NA),
-        sigla_indicador = sigla,
-        grupo = "economia da inovação",
-        tipo = tipo,
-        cod_ibge,
-        ibge6,
-        valor_rank = .data[[coluna_val]]
-      ) %>%
-      arrange(desc(valor_rank)) %>%
-      mutate(rank_pe = as.integer(row_number())) %>%
-      select(-valor_rank)
-  }
-  
-  i1 <- gerar_indicador(calc_mun, "pct_vab_infocom_serv", "pct_vab_infocom_serv", "% InfoCom em relação a Serviços no VAB", "percentual")
-  i2 <- gerar_indicador(calc_mun, "pct_estab_infocom_serv", "pct_estab_infocom_serv", "% InfoCom nos Estabelecimentos de Serviços", "percentual")
-  i3 <- gerar_indicador(calc_mun, "pct_emp_infocom_serv", "pct_emp_infocom_serv", "% InfoCom nos Empregados de Serviços", "percentual")
-  i4 <- gerar_indicador(calc_mun, "ql_infocom_serv", "ql_infocom_serv", "QL InfoCom em Serviços", "indice")
-  i5 <- gerar_indicador(calc_mun, "estab_infocom_val", "estab_infocom", "Estabelecimentos de Informação e Comunicação", "absoluto")
-  i6 <- gerar_indicador(calc_mun, "emp_infocom_val", "emp_infocom", "Empregados em Informação e Comunicação", "absoluto")
-  
-  lista_indicadores_novos[[as.character(ano_corrente)]] <- bind_rows(i1, i2, i3, i4, i5, i6)
+  lista_indicadores_novos[[sigla]] <- df_sub
 }
 
 df_novos_indicadores <- bind_rows(lista_indicadores_novos)
-cat("\nTotal de novas linhas geradas:", nrow(df_novos_indicadores), "linhas (exatamente 185 muns x 6 indicadores x 4 anos).\n")
+cat("\nTotal de novas linhas geradas:", nrow(df_novos_indicadores), "linhas.\n")
 
 # Limpar versões anteriores das siglas em df_indicadores_original
 siglas_novas <- unique(df_novos_indicadores$sigla_indicador)
@@ -149,14 +154,8 @@ df_ind_final <- df_ind_original %>%
 
 cat("Tamanho final de df_indicadores:", nrow(df_ind_final), "linhas.\n")
 
-# Salvar no parquet
+# Salvar no parquet central
 arrow::write_parquet(df_ind_final, p_ind)
 cat("Arquivo salvo com sucesso em:", p_ind, "\n")
-
-p_ind_raiz <- file.path(proj_dir, "data/indicadores/df_indicadores.parquet")
-if (file.exists(dirname(p_ind_raiz))) {
-  arrow::write_parquet(df_ind_final, p_ind_raiz)
-  cat("Arquivo espelho salvo em:", p_ind_raiz, "\n")
-}
 
 cat("\n[OK] Indicadores de InfoCom em Serviços consolidados com sucesso!\n")

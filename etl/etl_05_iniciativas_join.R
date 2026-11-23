@@ -543,11 +543,12 @@ if (file.exists(caminho_demo)) {
 # ------------------------------------------------------------------------------
 
 # 7.0 Definição e criação das pastas de destino
-DIR_EXPORT_DATA    <- "C:/dados/aurora"
+DIR_EXPORT_DATA    <- if (exists("DIR_OUT_AURORA") && !is.null(DIR_OUT_AURORA)) DIR_OUT_AURORA else "C:/dados/aurora"
 DIR_EXPORT_PARQUET <- file.path(DIR_EXPORT_DATA, "parquet")
 DIR_EXPORT_GEOJSON <- file.path(DIR_EXPORT_DATA, "geojson")
+DIR_EXPORT_JSON    <- file.path(DIR_EXPORT_DATA, "json")
 
-fs::dir_create(c(DIR_EXPORT_DATA, DIR_EXPORT_PARQUET, DIR_EXPORT_GEOJSON))
+fs::dir_create(c(DIR_EXPORT_DATA, DIR_EXPORT_PARQUET, DIR_EXPORT_GEOJSON, DIR_EXPORT_JSON))
 
 # ------------------------------------------------------------------------------
 # 7.1 EXPORTAÇÕES PARQUET (data/parquet/)
@@ -577,7 +578,39 @@ jsonlite::write_json(
   auto_unbox = TRUE,
   na = "null"
 )
+if (dir.exists(DIR_EXPORT_JSON)) {
+  jsonlite::write_json(
+    x = df_iniciativas,
+    path = file.path(DIR_EXPORT_JSON, "df_iniciativas.json"),
+    pretty = TRUE,
+    auto_unbox = TRUE,
+    na = "null"
+  )
+}
 cli_alert_success("Arquivo 'df_iniciativas.json' gravado em: {DIR_EXPORT_DATA}")
+
+# Exportação / Preservação de df_maes.json
+if (exists("df_maes") && !is.null(df_maes)) {
+  jsonlite::write_json(
+    x = df_maes,
+    path = file.path(DIR_EXPORT_DATA, "df_maes.json"),
+    pretty = TRUE,
+    auto_unbox = TRUE,
+    na = "null"
+  )
+  if (dir.exists(DIR_EXPORT_JSON)) {
+    jsonlite::write_json(
+      x = df_maes,
+      path = file.path(DIR_EXPORT_JSON, "df_maes.json"),
+      pretty = TRUE,
+      auto_unbox = TRUE,
+      na = "null"
+    )
+  }
+  cli_alert_success("Arquivo 'df_maes.json' gravado com sucesso.")
+} else if (file.exists(file.path(DIR_EXPORT_DATA, "df_maes.json")) && dir.exists(DIR_EXPORT_JSON)) {
+  file.copy(file.path(DIR_EXPORT_DATA, "df_maes.json"), file.path(DIR_EXPORT_JSON, "df_maes.json"), overwrite = TRUE)
+}
 
 # Exportação parquet da base de iniciativas municipais
 base_aurora %>% 

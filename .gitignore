@@ -32,3 +32,6 @@ tmp/
 temp_*
 repomix*.txt
 .DS_Store
+
+*.html
+*.gif

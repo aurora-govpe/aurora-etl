@@ -1,4 +1,4 @@
-﻿# ==============================================================================
+# ==============================================================================
 # SCRIPT: etl_rais_tecnologia.R (Versão Atualizada com Macrosetores e Vocações)
 # ==============================================================================
 
@@ -153,7 +153,7 @@ painel_econ_final <- painel_econ_long %>%
 
 # Persistência da Base Mestre
 write_parquet(painel_econ_final, 'data/rais/df_rais_tecnologia.parquet')
-write_parquet(painel_econ_final, 'app_aurora_municipios/data/df_rais_tecnologia.parquet')
+# write_parquet(painel_econ_final, 'app_aurora_municipios/data/df_rais_tecnologia.parquet')
 
 # --------------------------------================------------------------------
 # PARTE 2: SEGUNDA BASE — VOCAÇÕES ECONÔMICAS MUNICIPAIS (CNAE Divisão 2 Dígitos)
@@ -257,4 +257,4 @@ painel_vocacoes_completo <- painel_vocacoes_raw %>%
 
 # D. Persistência da Segunda Base (Vocações Municipais)
 write_parquet(painel_vocacoes_completo, 'data/rais/df_rais_vocacoes.parquet')
-write_rds(painel_vocacoes_completo, 'app_aurora_municipios/data/df_rais_vocacoes.rds')
+# write_rds(painel_vocacoes_completo, 'app_aurora_municipios/data/df_rais_vocacoes.rds')
