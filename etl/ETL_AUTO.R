@@ -59,6 +59,8 @@ rotinas <- list(
     'etl_pac.R',
     'comex/etl_comex.R',
     'rais/etl_rais_tecnologia.R',
+    'industria/etl_pim.R',
+    'agricultura/etl_credito_rural.R',
     'municipios/etl_mvi_cvp_muni.R',
     'municipios/etl_turismo_iatur.R',
     'municipios/etl_caracter_mun.R',
@@ -85,6 +87,9 @@ rotinas <- list(
   
   # ROTINAS ANUAIS / SOB DEMANDA
   anual = c(
+    'agricultura/etl_pam.R',
+    'agricultura/etl_ppm.R',
+    'agricultura/etl_aquicultura.R',
     'meio ambiente/etl_agricultura_sidra.R',
     'municipios/etl_indicadores_regioes_br.R',
     'municipios/etl_urbanizacao.R',
