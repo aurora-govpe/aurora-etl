@@ -1,4 +1,4 @@
-﻿# bibliotecas ----
+# bibliotecas ----
 library(tidyverse)
 library(readxl)
 library(fs)
@@ -97,7 +97,6 @@ seduh_sehab_shp_poligono <- lotes_sf_list %>%
     iniciativa_estrategica = str_trim(iniciativa_estrategica),
     produto = str_trim(produto)
   ) %>%
-  
   select(iniciativa_estrategica, produto, everything())
 
 # Inspecione o resultado

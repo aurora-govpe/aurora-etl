@@ -1,4 +1,4 @@
-﻿# versão jdbc ----
+# versão jdbc ----
 library(arrow)
 library(BigDataPE)
 library(DBI)
@@ -141,6 +141,6 @@ mutate(
 
 ## 6. Exportação do Dataset Otimizado ----
 write_parquet(liquidacao_consolidada, 'data/efisco/contratos_bdpe.parquet')
-write_parquet(liquidacao_consolidada, 'app_aurora_orcamento/data/contratos_bdpe.parquet')
+# write_parquet(liquidacao_consolidada, 'app_aurora_orcamento/data/contratos_bdpe.parquet')
 
 cat("[SUCCESS] ETL concluído com sucesso! Dataset gerado com labels e IDs numéricos.\n")

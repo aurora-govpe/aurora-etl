@@ -1,4 +1,4 @@
-﻿library(arrow)
+library(arrow)
 library(ibger)
 library(dplyr)
 library(purrr)
