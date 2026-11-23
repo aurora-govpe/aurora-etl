@@ -27,7 +27,7 @@ for (p in caminhos_paths) {
 }
 
 # 2. Definição dos diretórios Prata e Ouro ---------------------------------------
-dir_prata <- file.path(DIR_RAW_AURORA, "agricultura")
+dir_prata <- file.path(DIR_RAW_AURORA, "economia")
 dir_ouro  <- file.path(DIR_OUT_AURORA, "parquet")
 
 if (!dir.exists(dir_prata)) dir.create(dir_prata, recursive = TRUE, showWarnings = FALSE)

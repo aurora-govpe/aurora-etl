@@ -16,7 +16,7 @@ if (file.exists("R/paths.R")) {
 }
 
 # 2. Definição e criação do diretório de destino
-dir_destino <- file.path(DIR_RAW_AURORA, "agricultura")
+dir_destino <- file.path(DIR_RAW_AURORA, "economia")
 if (!dir.exists(dir_destino)) {
   dir.create(dir_destino, recursive = TRUE)
 }

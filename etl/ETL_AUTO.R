@@ -57,18 +57,23 @@ rotinas <- list(
     'rpa/rpa_compesa.py',
     'rpa/rpa_anac_dados_estatisticos.py',
     'etl_pac.R',
-    'comex/etl_comex.R',
     'rais/etl_rais_tecnologia.R',
-    'industria/etl_pim.R',
-    'agricultura/etl_credito_rural.R',
+    # Economia, Emprego, Comércio e Finanças
+    'economia/etl_caged.R',
+    'economia/etl_pix.R',
+    'economia/etl_estban_credito.R',
+    'economia/etl_comex_ncm.R',
+    'economia/etl_pmc.R',
+    'economia/etl_pim.R',
+    'economia/etl_empresas.R',
+    'economia/etl_credito_rural.R',
+    'economia/etl_turismo_iatur.R',
     'municipios/etl_mvi_cvp_muni.R',
-    'municipios/etl_turismo_iatur.R',
     'municipios/etl_caracter_mun.R',
     'municipios/atualizar_gestores_brasilapi.R',
     'municipios/etl_caracterizacao_ibge_tse.R', 
     'municipios/etl_ficha_municipal.R',
     'municipios/etl_indicadores_regioes_pe.R',
-    'empresas/etl_empresas.R',
     'municipios/etl_indicadores_ufs.R',
     'agua/etl_adutoras.R',
     'municipios/etl_consorcios_pernambuco.R',
@@ -87,25 +92,21 @@ rotinas <- list(
   
   # ROTINAS ANUAIS / SOB DEMANDA
   anual = c(
-    'agricultura/etl_pam.R',
-    'agricultura/etl_ppm.R',
-    'agricultura/etl_aquicultura.R',
+    'economia/etl_pam.R',
+    'economia/etl_ppm.R',
+    'economia/etl_aquicultura.R',
     'meio ambiente/etl_agricultura_sidra.R',
     'municipios/etl_indicadores_regioes_br.R',
     'municipios/etl_urbanizacao.R',
     'municipios/etl_demografia_pe.R',
     'municipios/etl_indicadores_ibge_sidra.R',
-<<<<<<< HEAD
     'municipios/etl_deficit_hab_fjp.R', 
     'demografia/etl_indicadores_demograficos.R',
     'demografia/etl_indicadores_demograficos_rd.R',
-=======
-    'municipios/etl_deficit_hab_fjp.R',
->>>>>>> 36fa291f966e2fe587799b008e2304c464a2912a
     'regic/regic_main.R',
     'regic/etl_mapa_rede_regic.R',
     'municipios/etl_matriz_desenvolvimento_regional.R',
-    'municipios/etl_infocom_servicos.R'
+    'economia/etl_infocom_servicos.R'
   ),
   
   # ROTINAS DE SERVIDOR / ESPECIAIS

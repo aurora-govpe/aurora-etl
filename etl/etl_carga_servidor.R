@@ -94,11 +94,22 @@ arquivos_parquet <- c(
   ## Aurora Municípios - Dinâmica das Empresas (SEPLAG) -----------------------
   "parquet/df_empresas_resumo_municipal.parquet",
   "parquet/df_empresas_saldo_mensal_muni.parquet",
+  "parquet/df_empresas_saldo_mensal_textil_muni.parquet",
   "parquet/df_empresas_saldo_mensal_pe.parquet",
   "parquet/df_empresas_saldo_mensal_porte.parquet",
   "parquet/df_empresas_faixa_etaria.parquet",
   "parquet/df_empresas_cnae_setor.parquet",
   "parquet/df_empresas_bairros_recife.parquet",
+
+  ## Aurora Municípios - Economia, Emprego, Comércio e Finanças --------------
+  "parquet/df_caged_municipios_pe.parquet",
+  "parquet/df_caged_municipios_cnae_pe.parquet",
+  "parquet/df_pix_municipios_pe.parquet",
+  "parquet/df_estban_credito_municipios_pe.parquet",
+  "parquet/df_comex_municipios_sh4_pe.parquet",
+  "parquet/df_comex_estadual_ncm_pe.parquet",
+  "parquet/pmc_comercio_varejista.parquet",
+  "parquet/pim_producao_industrial.parquet",
 
   ## Aurora Municípios - COMPESA & Infraestrutura Hídrica ----------------------
   "parquet/compesa_iniciativas_srhs.parquet",

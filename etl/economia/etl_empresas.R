@@ -27,10 +27,12 @@ message(">>> [ETL EMPRESAS] Iniciando processamento unificado...")
 
 # Caminho do motor em Python (alta performance para bases de ~2 milhões de registros)
 candidatos_py <- c(
+  file.path("etl", "economia", "etl_empresas.py"),
+  file.path("economia", "etl_empresas.py"),
   file.path("etl", "empresas", "etl_empresas.py"),
   file.path("empresas", "etl_empresas.py"),
   file.path(getwd(), "etl_empresas.py"),
-  file.path(getwd(), "empresas", "etl_empresas.py")
+  file.path(getwd(), "economia", "etl_empresas.py")
 )
 caminho_script_py <- candidatos_py[file.exists(candidatos_py)][1]
 
@@ -56,8 +58,9 @@ if (file.exists(caminho_script_py) && file.exists(python_bin)) {
     library(jsonlite)
   })
   
-  path_ativas   <- file.path(DIR_RAW_AURORA, "empresas", "df_SEPLAG_EMPRESAS_ATIVAS.parquet")
-  path_inativas <- file.path(DIR_RAW_AURORA, "empresas", "df_SEPLAG_EMPRESAS_INATIVAS.parquet")
+  dir_raw_econ <- if (dir.exists(file.path(DIR_RAW_AURORA, "economia"))) file.path(DIR_RAW_AURORA, "economia") else file.path(DIR_RAW_AURORA, "empresas")
+  path_ativas   <- file.path(dir_raw_econ, "df_SEPLAG_EMPRESAS_ATIVAS.parquet")
+  path_inativas <- file.path(dir_raw_econ, "df_SEPLAG_EMPRESAS_INATIVAS.parquet")
   
   df_ativas   <- arrow::read_parquet(path_ativas)
   df_inativas <- arrow::read_parquet(path_inativas)

@@ -40,8 +40,9 @@ DIR_OUT = os.getenv(
     "/srv/dados/aurora" if IS_LINUX else r"C:\dados\aurora"
 )
 
-PATH_ATIVAS = os.path.join(DIR_RAW, "empresas", "df_SEPLAG_EMPRESAS_ATIVAS.parquet")
-PATH_INATIVAS = os.path.join(DIR_RAW, "empresas", "df_SEPLAG_EMPRESAS_INATIVAS.parquet")
+DIR_RAW_ECON = os.path.join(DIR_RAW, "economia")
+PATH_ATIVAS = os.path.join(DIR_RAW_ECON, "df_SEPLAG_EMPRESAS_ATIVAS.parquet") if os.path.exists(os.path.join(DIR_RAW_ECON, "df_SEPLAG_EMPRESAS_ATIVAS.parquet")) else os.path.join(DIR_RAW, "empresas", "df_SEPLAG_EMPRESAS_ATIVAS.parquet")
+PATH_INATIVAS = os.path.join(DIR_RAW_ECON, "df_SEPLAG_EMPRESAS_INATIVAS.parquet") if os.path.exists(os.path.join(DIR_RAW_ECON, "df_SEPLAG_EMPRESAS_INATIVAS.parquet")) else os.path.join(DIR_RAW, "empresas", "df_SEPLAG_EMPRESAS_INATIVAS.parquet")
 PATH_GEO_MUNIS = os.path.join(DIR_OUT, "geojson", "pernambuco_municipios.geojson")
 
 DIR_OUT_PARQUET = os.path.join(DIR_OUT, "parquet")
@@ -303,12 +304,14 @@ def processar_etl():
 
     # A) Saldo Mensal Estadual (Aberturas x Fechamentos)
     # Considera aberturas de ambas as bases (pois quem abriu no passado e já fechou também foi abertura daquele mês!)
-    aberturas_ativas = df_ativas[["ano_mes_abertura", "porte_ajustado", "cod_ibge", "municipio_oficial"]].rename(columns={"ano_mes_abertura": "ano_mes"})
-    aberturas_inativas = df_inativas[["ano_mes_abertura", "porte_ajustado", "cod_ibge", "municipio_oficial"]].rename(columns={"ano_mes_abertura": "ano_mes"})
+    cols_saldo = ["ano_mes_abertura", "porte_ajustado", "cod_ibge", "municipio_oficial", "cnae", "cnae_divisao", "is_mei"]
+    aberturas_ativas = df_ativas[cols_saldo].rename(columns={"ano_mes_abertura": "ano_mes"})
+    aberturas_inativas = df_inativas[cols_saldo].rename(columns={"ano_mes_abertura": "ano_mes"})
     todas_aberturas = pd.concat([aberturas_ativas, aberturas_inativas], ignore_index=True)
     todas_aberturas = todas_aberturas[todas_aberturas["ano_mes"].str.startswith(("19", "20"), na=False)]
 
-    fechamentos = df_inativas[["ano_mes_fechamento", "porte_ajustado", "cod_ibge", "municipio_oficial"]].rename(columns={"ano_mes_fechamento": "ano_mes"})
+    cols_fechamento = ["ano_mes_fechamento", "porte_ajustado", "cod_ibge", "municipio_oficial", "cnae", "cnae_divisao", "is_mei"]
+    fechamentos = df_inativas[cols_fechamento].rename(columns={"ano_mes_fechamento": "ano_mes"})
     fechamentos = fechamentos[fechamentos["ano_mes"].str.startswith(("19", "20"), na=False)]
 
     # Saldo Estadual Mês a Mês (Geral)
@@ -336,6 +339,39 @@ def processar_etl():
     df_saldo_mun["saldo"] = df_saldo_mun["aberturas"] - df_saldo_mun["fechamentos"]
     df_saldo_mun["ano"] = df_saldo_mun["ano_mes"].str[:4].astype(int)
     df_saldo_mun = df_saldo_mun[(df_saldo_mun["ano"] >= 2018) & (df_saldo_mun["ano"] <= 2026)].sort_values(["ano_mes", "municipio_oficial"]).reset_index(drop=True)
+
+    # Recorte Municipal Mensal do Polo Têxtil / Confecção / Vestuário (CNAEs 13, 14 e 47.8)
+    def classificar_cnae_textil(row):
+        div = str(row.get("cnae_divisao", "")).zfill(2)
+        cnae_val = row.get("cnae", 0)
+        try:
+            cnae_str = str(int(float(cnae_val))).zfill(7)
+        except Exception:
+            cnae_str = str(cnae_val)
+        if div == "13":
+            return "CNAE 13 - Fabricação de produtos têxteis"
+        elif div == "14":
+            return "CNAE 14 - Confecção de artigos do vestuário e acessórios"
+        elif cnae_str.startswith("478") or cnae_str.startswith("47.8"):
+            return "CNAE 47.8 - Comércio varejista de tecidos, vestuário e calçados"
+        return None
+
+    todas_aberturas["cnae_textil"] = todas_aberturas.apply(classificar_cnae_textil, axis=1)
+    fechamentos["cnae_textil"] = fechamentos.apply(classificar_cnae_textil, axis=1)
+
+    ab_textil = todas_aberturas[todas_aberturas["cnae_textil"].notna()]
+    fc_textil = fechamentos[fechamentos["cnae_textil"].notna()]
+
+    ab_g = ab_textil.groupby(["ano_mes", "cod_ibge", "municipio_oficial", "cnae_textil", "is_mei"]).size().rename("aberturas")
+    fc_g = fc_textil.groupby(["ano_mes", "cod_ibge", "municipio_oficial", "cnae_textil", "is_mei"]).size().rename("fechamentos")
+    df_saldo_textil = pd.concat([ab_g, fc_g], axis=1).fillna(0).astype(int).reset_index()
+    df_saldo_textil["saldo_liquido"] = df_saldo_textil["aberturas"] - df_saldo_textil["fechamentos"]
+    df_saldo_textil["tipo_porte"] = df_saldo_textil["is_mei"].map({True: "MEI", False: "Demais Portes"})
+    df_saldo_textil["ano"] = df_saldo_textil["ano_mes"].str[:4].astype(int)
+    df_saldo_textil["mes"] = df_saldo_textil["ano_mes"].str[5:7].astype(int)
+    df_saldo_textil = df_saldo_textil[(df_saldo_textil["ano"] >= 2018) & (df_saldo_textil["ano"] <= 2026)].sort_values(
+        ["ano_mes", "municipio_oficial", "cnae_textil", "tipo_porte"]
+    ).reset_index(drop=True)
 
     # B) Faixas Etárias de Empresas
     def atribuir_faixa_etaria(anos):
@@ -453,6 +489,7 @@ def processar_etl():
         "df_empresas_saldo_mensal_pe.parquet": df_saldo_pe,
         "df_empresas_saldo_mensal_porte.parquet": df_saldo_porte,
         "df_empresas_saldo_mensal_muni.parquet": df_saldo_mun,
+        "df_empresas_saldo_mensal_textil_muni.parquet": df_saldo_textil,
         "df_empresas_resumo_municipal.parquet": df_muni_resumo,
         "df_empresas_faixa_etaria.parquet": df_faixas_etarias,
         "df_empresas_cnae_setor.parquet": df_cnae_setor,

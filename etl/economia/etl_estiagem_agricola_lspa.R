@@ -42,7 +42,7 @@ if (file.exists("R/paths.R")) {
 }
 
 # Nível Prata: RDS e Excel em dados brutos
-dir_dest_prata <- file.path(DIR_RAW_AURORA, "agricultura")
+dir_dest_prata <- file.path(DIR_RAW_AURORA, "economia")
 
 # Nível Ouro: Parquet para consumo no App
 dir_dest_parquet <- file.path(DIR_OUT_AURORA, "parquet")
