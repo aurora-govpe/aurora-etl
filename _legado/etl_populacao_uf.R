@@ -1,4 +1,4 @@
-﻿library(dplyr)
+library(dplyr)
 library(ibger)
 
 ibge_aggregates() %>% View()
@@ -13,4 +13,3 @@ dados_populacao_uf %>%
   saveRDS(
     'app_aurora_fiscal/data/dados_populacao_uf.rds'
     )
-

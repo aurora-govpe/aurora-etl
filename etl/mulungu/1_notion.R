@@ -1,22 +1,7 @@
-#notion_key <- "secret_bkUAXm9I0u3xeY1hjckKbi5CzAig54XiTBQYRAD8pUm"
-#notion_iniciativas <- "a19ce1ff6027441e957531e2d91fc489"
-#notion_licitacoes <- "a02d8d05a87d484584afc1afd24327ea"
-#notion_obras <- "eed382976b5b49a4bb18cf27c9509a0b"
-#notion_projetos <- "e97ad692fed14557863583188ab3c9eb" # Não funciona
-
-notion_key <- "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"
-
-# iniciativas (NOVO) - Felipe Ferreira
-notion_iniciativas <- "26d9d6905fd781cd8cbfc58d14de3493"
-
-# licitações
-notion_licitacoes <- "26d9d6905fd78170a307cccf672800c5"
-
-# obras
-notion_obras <- "26d9d6905fd781fcac5ac9a4bf1e0a74"
-
-# portfólio GEP
-notion_projetos <- "26d9d6905fd7810b9656dfdc59e7685c"
+notion_key <- Sys.getenv("NOTION_KEY")
+notion_iniciativas <- Sys.getenv("NOTION_INICIATIVAS")
+notion_licitacoes <- Sys.getenv("NOTION_LICITACOES")
+notion_obras <- Sys.getenv("NOTION_OBRAS")
 
 # Obras: https://www.notion.so/felipe-ferreira/26d9d6905fd781fcac5ac9a4bf1e0a74?v=26d9d6905fd7816694c9000c82c51f8e&source=copy_link
 # Licitações: https://www.notion.so/felipe-ferreira/26d9d6905fd78170a307cccf672800c5?v=26d9d6905fd7814f8674000ccff9503a&source=copy_link
@@ -144,6 +129,22 @@ get_id_data <- function(database_id, notion_key) {
 #          tipo = `TIPO DE INTERVENÇÃO`,
 #          ritmo = `RITMO DA OBRA`
 #   )
+
+# Teste rápido de conexão e permissão por banco
+# testar_conexao <- function(db_id, key) {
+#   request(paste0("https://api.notion.com/v1/databases/", db_id)) |>
+#     req_headers(
+#       "Notion-Version" = "2022-06-28",
+#       "Authorization" = paste("Bearer", key)
+#     ) |>
+#     req_error(is_error = \(resp) FALSE) |> # Evita quebrar o script para ler o status
+#     req_perform() |>
+#     resp_status()
+# }
+# 
+# testar_conexao(notion_obras, notion_key)
+# testar_conexao(notion_licitacoes, notion_key)
+# testar_conexao(notion_projetos, notion_key)
 
 obras_notion <- get_id_data(notion_obras, notion_key) %>% 
   mutate(across(everything(), ~ if_else(.x == "" | .x == "-", NA_character_, .x))) %>% 

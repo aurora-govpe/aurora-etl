@@ -81,7 +81,21 @@ dados_populacao_mun_pe <- dados_populacao_mun %>%
 cli_alert_success("População IBGE carregada ({nrow(dados_populacao_mun_pe)} municípios).")
 
 ## 3.2 Pessoas no Cadastro Único ----
-caminho_cad_unico <- file.path(DIR_RAW_AURORA, "vulnerabilidade/cad_unico.xlsx")
+dir_cadunico <- file.path(DIR_OUT_AURORA, "cadunico")
+
+arquivos_cad <- list.files(
+  path = dir_cadunico,
+  pattern = "^familias_pessoas_municipios_cadunico_.*\\.xlsx$",
+  full.names = TRUE
+)
+
+if (length(arquivos_cad) == 0) {
+  stop("Nenhum arquivo 'familias_pessoas_municipios_cadunico_' encontrado em: ", dir_cadunico)
+}
+
+# Pega o arquivo modificado/criado mais recentemente
+info_arquivos <- file.info(arquivos_cad)
+caminho_cad_unico <- rownames(info_arquivos)[which.max(info_arquivos$mtime)]
 
 if (!file.exists(caminho_cad_unico)) {
   cli_abort("Arquivo do Cadastro Único não encontrado em: {.path {caminho_cad_unico}}")
@@ -91,10 +105,10 @@ df_cad_pessoas <- readxl::read_xlsx(caminho_cad_unico) %>%
   clean_names() %>%
   mutate(
     codigo = as.integer(cod_ibge), 
-    pessoas_cad_unico = as.numeric(pessoas)
+    pessoas = as.numeric(pessoas)
   ) %>%
   filter(str_starts(as.character(codigo), "26")) %>%
-  select(-cod_ibge, -pessoas)
+ select(-cod_ibge)
 
 df_cad_pessoas_2 <- df_cad_pessoas %>%
   left_join(
@@ -102,7 +116,7 @@ df_cad_pessoas_2 <- df_cad_pessoas %>%
     by = "codigo"
   ) %>%
   mutate(
-    tx_pessoas_cad_unico = round(pessoas_cad_unico / value, 4), 
+    tx_pessoas_cad_unico = round(pessoas / value, 4), 
     unidade_territorial  = toupper(municipio),
     uf                   = "PE"
   ) %>%
@@ -110,8 +124,8 @@ df_cad_pessoas_2 <- df_cad_pessoas %>%
     codigo, 
     unidade_territorial, 
     uf, 
-    referencia, 
-    pessoas_cad_unico, 
+    referencia_cad_unico, 
+    pessoas, 
     tx_pessoas_cad_unico
   )
 

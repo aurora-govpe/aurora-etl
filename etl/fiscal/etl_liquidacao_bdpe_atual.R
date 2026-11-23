@@ -1,4 +1,4 @@
-﻿# versão jdbc ----
+# versão jdbc ----
 library(arrow)
 library(BigDataPE)
 library(DBI)
@@ -55,3 +55,4 @@ liquidacao_2026_bdpe %>% glimpse()
 
 liquidacao_2026_bdpe %>% 
   write_parquet('data/efisco/liquidacao_2026_bdpe.parquet')
+

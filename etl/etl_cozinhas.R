@@ -15,47 +15,79 @@ library(stringr)
 library(tidygeocoder)
 
 # paths e diretorios base ----
-if (file.exists("R/paths.R")) source("R/paths.R") else if (file.exists("paths.R")) source("paths.R") else if (file.exists("../paths.R")) source("../paths.R") else if (file.exists("etl/paths.R")) source("etl/paths.R")
+caminhos_paths <- c("R/paths.R", "paths.R", "../paths.R", "etl/paths.R", "../../R/paths.R")
+for (p in caminhos_paths) {
+  if (file.exists(p)) {
+    source(p)
+    break
+  }
+}
 
-dir_aurora     <- "C:/dados/aurora"
+if (!exists("DIR_OUT_AURORA")) DIR_OUT_AURORA <- "C:/dados/aurora"
+if (!exists("DIR_RAW_AURORA")) DIR_RAW_AURORA <- "C:/dados/dados brutos/aurora"
+
+dir_aurora     <- DIR_OUT_AURORA
 cache_geo_path <- file.path(DIR_OUT_AURORA, "cache_geocodificacao_cozinhas.json")
-mapa_pe_path   <- file.path(dir_aurora, "mapa_pe.json")
-out_rds_path   <- file.path(DIR_OUT_AURORA, "df_cozinhas.rds")
-out_parquet_path   <- file.path(DIR_OUT_AURORA, "parquet/df_cozinhas.parquet")
-out_json_path  <- file.path(DIR_OUT_AURORA, "df_cozinhas.json")
+mapa_pe_path   <- if (file.exists(file.path(dir_aurora, "mapa_pe.json"))) {
+  file.path(dir_aurora, "mapa_pe.json")
+} else if (file.exists(file.path(DIR_RAW_AURORA, "mapa_pe.json"))) {
+  file.path(DIR_RAW_AURORA, "mapa_pe.json")
+} else {
+  file.path(dir_aurora, "mapa_pe.json")
+}
+
+out_rds_path     <- file.path(DIR_OUT_AURORA, "df_cozinhas.rds")
+out_parquet_path <- file.path(DIR_OUT_AURORA, "parquet/df_cozinhas.parquet")
+out_json_path    <- file.path(DIR_OUT_AURORA, "df_cozinhas.json")
 
 # setup conexao trino ----
 config_path <- file.path(dir_aurora, "config.yml")
-config_bdpe <- config::get("bdpe", file = config_path)
+if (!file.exists(config_path)) config_path <- file.path(DIR_RAW_AURORA, "config.yml")
 
-drv <- JDBC(
-  driverClass = "io.trino.jdbc.TrinoDriver",
-  classPath   = file.path(dir_aurora, "trino-jdbc-468.jar")
-)
-
-url <- glue(
-  "jdbc:trino://{config_bdpe$db_host}:{config_bdpe$db_port}?SSL=true&user={config_bdpe$db_user}&password={config_bdpe$db_pass}"
-)
-
-con <- dbConnect(drv, url)
-cli::cli_alert_success("Conexão Trino estabelecida!")
+con <- NULL
+if (file.exists(config_path)) {
+  tryCatch({
+    config_bdpe <- config::get("bdpe", file = config_path)
+    drv <- JDBC(
+      driverClass = "io.trino.jdbc.TrinoDriver",
+      classPath   = file.path(dir_aurora, "trino-jdbc-468.jar")
+    )
+    url <- glue(
+      "jdbc:trino://{config_bdpe$db_host}:{config_bdpe$db_port}?SSL=true&user={config_bdpe$db_user}&password={config_bdpe$db_pass}"
+    )
+    con <- dbConnect(drv, url)
+    cli::cli_alert_success("Conexão Trino estabelecida!")
+  }, error = function(e) {
+    cli::cli_alert_warning("Não foi possível conectar ao Trino: {e$message}")
+  })
+}
 
 # 1. extracao via sql (com fallback para rds local) ----
-shp_pe_mun_limites <- readRDS(file.path(DIR_RAW_AURORA, "pernambuco_sf.rds")) %>%
-  clean_names()
+p_shp_sf <- if (file.exists(file.path(DIR_RAW_AURORA, "pernambuco_sf.rds"))) {
+  file.path(DIR_RAW_AURORA, "pernambuco_sf.rds")
+} else {
+  file.path(DIR_OUT_AURORA, "pernambuco_sf.rds")
+}
 
-equipamentos_bdpe <- tryCatch(
-  {
-    dados <- dbGetQuery(con, "select * from servico_hive.ingestedata.equipamentos_combate_fome") %>%
-      clean_names()
-    cli::cli_alert_success("Dados de equipamentos_combate_fome extraídos via Trino SQL.")
-    dados
-  },
-  error = function(e) {
-    cli::cli_alert_warning("Falha na consulta Trino ({e$message}). Carregando backup local...")
-    readRDS(out_rds_path)
-  }
-)
+shp_pe_mun_limites <- readRDS(p_shp_sf) %>% clean_names()
+
+equipamentos_bdpe <- if (!is.null(con)) {
+  tryCatch(
+    {
+      dados <- dbGetQuery(con, "select * from servico_hive.ingestedata.equipamentos_combate_fome") %>%
+        clean_names()
+      cli::cli_alert_success("Dados de equipamentos_combate_fome extraídos via Trino SQL.")
+      dados
+    },
+    error = function(e) {
+      cli::cli_alert_warning("Falha na consulta Trino ({e$message}). Carregando backup local...")
+      readRDS(out_rds_path)
+    }
+  )
+} else {
+  cli::cli_alert_info("Carregando base de cozinhas do backup local ({out_rds_path})...")
+  readRDS(out_rds_path)
+}
 
 # 2. transformacao e padronizacao cadastral ----
 df_cozinhas <- equipamentos_bdpe %>%
@@ -124,44 +156,48 @@ df_cozinhas <- df_cozinhas %>%
   )
 
 # 6. validacao espacial direta com limites municipais ----
-mapa_pe <- read_sf(mapa_pe_path) %>%
-  clean_names() %>%
-  st_transform(4326)
-
-col_ibge_mapa <- intersect(
-  names(mapa_pe),
-  c("cod_ibge", "cd_mun", "ibge7", "cd_geocmu", "codigo_ibge", "codigo")
-)[1]
-
-mapa_valida <- mapa_pe %>%
-  select(ibge_mun = all_of(col_ibge_mapa)) %>%
-  mutate(ibge_mun = as.integer(ibge_mun))
-
-pontos_sf <- df_cozinhas %>%
-  filter(!is.na(lat), !is.na(long)) %>%
-  st_as_sf(coords = c("long", "lat"), crs = 4326, remove = FALSE)
-
-validacao_pontos <- st_join(pontos_sf, mapa_valida, join = st_intersects) %>%
-  st_drop_geometry() %>%
-  group_by(query_geocoding) %>%
-  summarise(coord_valida_municipio = any(cod_ibge == ibge_mun, na.rm = TRUE))
+if (file.exists(mapa_pe_path)) {
+  mapa_pe <- read_sf(mapa_pe_path) %>%
+    clean_names() %>%
+    st_transform(4326)
+  
+  col_ibge_mapa <- intersect(
+    names(mapa_pe),
+    c("cod_ibge", "cd_mun", "ibge7", "cd_geocmu", "codigo_ibge", "codigo")
+  )[1]
+  
+  mapa_valida <- mapa_pe %>%
+    select(ibge_mun = all_of(col_ibge_mapa)) %>%
+    mutate(ibge_mun = as.integer(ibge_mun))
+  
+  pontos_sf <- df_cozinhas %>%
+    filter(!is.na(lat), !is.na(long)) %>%
+    st_as_sf(coords = c("long", "lat"), crs = 4326, remove = FALSE)
+  
+  validacao_pontos <- st_join(pontos_sf, mapa_valida, join = st_intersects) %>%
+    st_drop_geometry() %>%
+    group_by(query_geocoding) %>%
+    summarise(coord_valida_municipio = any(cod_ibge == ibge_mun, na.rm = TRUE))
+  
+  df_cozinhas <- df_cozinhas %>%
+    left_join(validacao_pontos, by = "query_geocoding")
+} else {
+  df_cozinhas <- df_cozinhas %>%
+    mutate(coord_valida_municipio = !is.na(lat) & !is.na(long))
+}
 
 df_cozinhas <- df_cozinhas %>%
-  left_join(validacao_pontos, by = "query_geocoding") %>%
-  select(-c(endereco_limpo, query_geocoding))
+  select(-any_of(c("endereco_limpo", "query_geocoding")))
 
 # 7. gravacao final e encerramento ----
 saveRDS(df_cozinhas, out_rds_path)
 write_json(df_cozinhas, out_json_path, pretty = TRUE, auto_unbox = TRUE)
-write_parquet(df_cozinhas, out_parquet_path)
+if (dir.exists(dirname(out_parquet_path))) {
+  arrow::write_parquet(df_cozinhas, out_parquet_path)
+}
 
-dbDisconnect(con)
-cli::cli_alert_success("ETL finalizado com sucesso e conexão encerrada!")
+if (!is.null(con)) {
+  tryCatch(dbDisconnect(con), error = function(e) NULL)
+}
 
-print(table(coord_valida_municipio = df_cozinhas$coord_valida_municipio, useNA = "always"))
-
-df_cozinhas %>% 
-  filter(coord_valida_municipio == FALSE) %>%
-  writexl::write_xlsx(
-    'ausentes_cozinhas_comunitarias.xlsx'
-  )
+cli::cli_alert_success("ETL Cozinhas finalizado com sucesso!")

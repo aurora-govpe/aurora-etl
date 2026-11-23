@@ -46,6 +46,8 @@ if (file.exists("R/paths.R")) {
 if (!exists("DIR_ETL"))        DIR_ETL        <- getwd()
 if (!exists("DIR_RAW_AURORA")) DIR_RAW_AURORA <- file.path(DIR_ETL, "data")
 if (!exists("DIR_OUT_AURORA")) DIR_OUT_AURORA <- file.path(DIR_ETL, "data")
+DIR_EXPORT_JSON    <- file.path(DIR_OUT_AURORA, "json")
+
 
 # Estrutura de pastas locais
 LOCAL_PATH      <- file.path(DIR_RAW_AURORA, "pcp")
@@ -246,12 +248,39 @@ arrow::write_parquet(df_pcp_final, file.path(dir_parquet_out, "df_pcp.parquet"),
 arrow::write_parquet(df_pcp_final, file.path(LOCAL_PATH, "df_pcp.parquet"), compression = "snappy")
 arrow::write_parquet(df_pcp_final, file.path(dir_parquet_pcp, "df_pcp.parquet"), compression = "snappy")
 
+
+# ------------------------------------------------------------------------------
+# FUNÇÃO DE NORMALIZAÇÃO DE NOMES DE MUNICÍPIO
+# ------------------------------------------------------------------------------
+padronizar_municipio <- function(x) {
+  x %>%
+    as.character() %>%
+    str_replace_all("(?i)\\s*-\\s*PE$", "") %>% # Remove ' - PE' ou '-PE'
+    stri_trans_general("Latin-ASCII") %>%      # Remove acentuações (Água Preta -> Agua Preta)
+    str_squish() %>%                           # Remove múltiplos espaços em branco
+    toupper()                                  # Padroniza em maiúsculas
+}
+
+# ------------------------------------------------------------------------------
+# PREPARAÇÃO DO DICIONÁRIO DE-PARA (IBGE7)
+# ------------------------------------------------------------------------------
+ficha_municipal <- arrow::read_parquet("C:/dados/aurora/parquet/ficha_municipal.parquet")
+
+de_para_ibge <- ficha_municipal %>%
+  select(ibge7, municipio) %>%
+  distinct(ibge7, .keep_all = TRUE) %>%
+  mutate(municipio_norm = padronizar_municipio(municipio)) %>%
+  select(ibge7, municipio_norm)
+
+
 df_pcp_final2 <- df_pcp_final %>%
   mutate(municipio_norm = padronizar_municipio(municipio)) %>%
   left_join(de_para_ibge, by = "municipio_norm") %>%
   select(ibge7, everything(), -municipio_norm)
 
 df_pcp_final2 %>% filter(is.na(ibge7) & !is.na(municipio)) %>% distinct(municipio)
+
+df_pcp_final2 %>% View()
 
 # Exportação JSON
 jsonlite::write_json(

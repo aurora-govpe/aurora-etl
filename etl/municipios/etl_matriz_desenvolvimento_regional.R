@@ -7,17 +7,17 @@
 #           Matriz Territorial v2.
 #
 # Entradas:
-#   - app_aurora_municipios/data/parquet/df_demografia_pe.parquet
-#   - app_aurora_municipios/data/parquet/regic_pe_main.parquet
-#   - app_aurora_municipios/data/parquet/arranjos_populacionais_pe.parquet
-#   - app_aurora_municipios/data/lista_municipios_Semiarido_2022.xlsx
-#   - app_aurora_municipios/data/parquet/df_indicadores.parquet
-#   - app_aurora_municipios/data/df_rais_tecnologia.parquet
-#   - app_aurora_municipios/data/rodovias_extensoes_sf.rds
+#   - DIR_OUT_AURORA/parquet/df_demografia_pe.parquet
+#   - DIR_OUT_AURORA/parquet/regic_pe_main.parquet
+#   - DIR_OUT_AURORA/parquet/arranjos_populacionais_pe.parquet
+#   - DIR_RAW_AURORA/lista_municipios_Semiarido_2022.xlsx (ou DIR_OUT_AURORA)
+#   - DIR_OUT_AURORA/parquet/df_indicadores.parquet
+#   - DIR_OUT_AURORA/df_rais_tecnologia.parquet (ou parquet/)
+#   - DIR_RAW_AURORA/rodovias_extensoes_sf.rds (ou DIR_OUT_AURORA)
 #
 # Saídas:
-#   - data/indicadores/matriz_desenvolvimento_regional.parquet
-#   - app_aurora_municipios/data/matriz_desenvolvimento_regional.parquet
+#   - DIR_OUT_AURORA/parquet/matriz_desenvolvimento_regional.parquet
+#   - DIR_OUT_AURORA/matriz_desenvolvimento_regional.parquet
 # ==============================================================================
 
 suppressPackageStartupMessages({
@@ -33,16 +33,19 @@ cat("===========================================================================
 cat("Iniciando ETL: Matriz de Desenvolvimento Regional de Pernambuco\n")
 cat("==============================================================================\n\n")
 
-# Caminhos base
-proj_dir <- "C:/Users/hugo.vasconcelos/Documents/projetos/segpr_ndgr/auroraprime"
-data_aurora <- file.path(proj_dir, "app_aurora_municipios/data")
-parquet_aurora <- file.path(data_aurora, "parquet")
+# 1. Resolução centralizada de caminhos ----
+caminhos_paths <- c("R/paths.R", "paths.R", "../paths.R", "etl/paths.R", "../../R/paths.R")
+for (p in caminhos_paths) {
+  if (file.exists(p)) {
+    source(p)
+    break
+  }
+}
 
-out_dir_1 <- file.path(proj_dir, "data/indicadores")
-out_dir_2 <- file.path(proj_dir, "app_aurora_municipios/data")
+if (!exists("DIR_OUT_AURORA")) DIR_OUT_AURORA <- "C:/dados/aurora"
+if (!exists("DIR_RAW_AURORA")) DIR_RAW_AURORA <- "C:/dados/dados brutos/aurora"
 
-if (!dir.exists(out_dir_1)) dir.create(out_dir_1, recursive = TRUE)
-if (!dir.exists(out_dir_2)) dir.create(out_dir_2, recursive = TRUE)
+parquet_aurora <- file.path(DIR_OUT_AURORA, "parquet")
 
 # ------------------------------------------------------------------------------
 # 1. Base Cadastral Demográfica Municipal
@@ -87,131 +90,129 @@ cat("   -> Tipologias mapeadas com sucesso.\n")
 # 3. Delimitação Oficial do Semiárido 2022
 # ------------------------------------------------------------------------------
 cat("3. Integrando delimitacao oficial do Semiarido (SUDENE/MDR 2022)...\n")
-semi_path <- file.path(data_aurora, "lista_municipios_Semiarido_2022.xlsx")
-df_semi <- readxl::read_excel(semi_path, sheet = "1477 mun", col_types = "text")
+semi_candidatos <- c(
+  file.path(DIR_RAW_AURORA, "lista_municipios_Semiarido_2022.xlsx"),
+  file.path(DIR_OUT_AURORA, "lista_municipios_Semiarido_2022.xlsx"),
+  "data/lista_municipios_Semiarido_2022.xlsx"
+)
 
-semi_pe_codes <- df_semi %>%
-  filter(str_starts(CD_MUN, "26")) %>%
-  pull(CD_MUN) %>%
-  str_trim()
-
-matriz <- matriz %>%
-  mutate(semiarido = if_else(cod_ibge %in% semi_pe_codes, 1L, 0L))
-
-cat("   -> Municípios no Semiárido (valor 1):", sum(matriz$semiarido == 1), "\n")
-cat("   -> Municípios fora do Semiárido (valor 0):", sum(matriz$semiarido == 0), "\n")
-
-# ------------------------------------------------------------------------------
-# 4. Indicadores do df_indicadores (VAB, IR_PIA, RD_Jovem, IVCAD_DR, Esgoto)
-# ------------------------------------------------------------------------------
-cat("4. Processando indicadores setoriais (VAB, Demografia, IVCAD, Saneamento)...\n")
-df_ind <- arrow::read_parquet(file.path(parquet_aurora, "df_indicadores.parquet")) %>%
-  mutate(
-    ibge6 = substr(as.character(cod_ibge), 1, 6),
-    indicador_num = suppressWarnings(as.numeric(indicador))
-  )
-
-# 4.1. VAB Setorial (%) - Ano 2021
-vab_piv <- df_ind %>%
-  filter(sigla_indicador %in% c("vab_serv", "vab_adm", "vab_ind", "vab_agro"), ano == 2021) %>%
-  select(ibge6, sigla_indicador, indicador_num) %>%
-  pivot_wider(names_from = sigla_indicador, values_from = indicador_num) %>%
-  mutate(
-    vab_total = vab_serv + vab_adm + vab_ind + vab_agro,
-    pct_vab_serv = (vab_serv / vab_total) * 100,
-    pct_vab_adm  = (vab_adm / vab_total) * 100,
-    pct_vab_ind  = (vab_ind / vab_total) * 100,
-    pct_vab_agro = (vab_agro / vab_total) * 100
-  ) %>%
-  select(ibge6, pct_vab_serv, pct_vab_adm, pct_vab_ind, pct_vab_agro)
-
-matriz <- matriz %>% left_join(vab_piv, by = "ibge6")
-
-# 4.2. Demografia: IR_PIA e RD_Jovem - Ano 2026
-demo_piv <- df_ind %>%
-  filter(sigla_indicador %in% c("ind_ir_pia", "rd_jovem"), ano == 2026) %>%
-  select(ibge6, sigla_indicador, indicador_num) %>%
-  pivot_wider(names_from = sigla_indicador, values_from = indicador_num) %>%
-  rename(reposicao_pia = ind_ir_pia)
-
-matriz <- matriz %>% left_join(demo_piv, by = "ibge6")
-
-# 4.3. IVCAD - Disponibilidade de Recursos (DR) - Ano 2026
-dr_df <- df_ind %>%
-  filter(sigla_indicador == "ivcad_dr", ano == 2026) %>%
-  select(ibge6, ivcad_taxa = indicador_num)
-
-matriz <- matriz %>% left_join(dr_df, by = "ibge6")
-
-# 4.4. Saneamento: Déficit de Esgotamento Sanitário (Censo)
-esg_df <- df_ind %>%
-  filter(sigla_indicador == "pct_esgoto_rede") %>%
-  select(ibge6, pct_esgoto_rede = indicador_num) %>%
-  mutate(deficit_esgoto = 100 - pct_esgoto_rede) %>%
-  select(ibge6, deficit_esgoto)
-
-matriz <- matriz %>% left_join(esg_df, by = "ibge6")
-
-cat("   -> Indicadores do painel vinculados com sucesso.\n")
-
-# ------------------------------------------------------------------------------
-# 5. Mercado de Trabalho / Empresas (RAIS Tecnologia 2025)
-# ------------------------------------------------------------------------------
-cat("5. Vinculando estoque de empresas de Servicos e Infocom (RAIS 2025)...\n")
-df_rais <- arrow::read_parquet(file.path(data_aurora, "df_rais_tecnologia.parquet"))
-
-rais_piv <- df_rais %>%
-  filter(sigla_indicador %in% c("estab_serv", "estab_infocom"), ano == 2025) %>%
-  transmute(
-    cod_ibge = as.character(id_municipio),
-    sigla_indicador,
-    valor = as.integer(valor)
-  ) %>%
-  pivot_wider(names_from = sigla_indicador, values_from = valor) %>%
-  rename(
-    total_emp_serv = estab_serv,
-    total_emp_infocom = estab_infocom
-  )
-
-matriz <- matriz %>% left_join(rais_piv, by = "cod_ibge")
-
-cat("   -> Empresas RAIS vinculadas.\n")
-
-# ------------------------------------------------------------------------------
-# 6. Eixo Rodoviário Principal (rodovias_extensoes_sf.rds)
-# ------------------------------------------------------------------------------
-cat("6. Extraindo eixo rodoviario principal por municipio (rodovias_extensoes_sf)...\n")
-p_roads <- file.path(data_aurora, "rodovias_extensoes_sf.rds")
-df_roads <- readRDS(p_roads)
-
-if (inherits(df_roads, "sf")) {
-  df_roads <- sf::st_drop_geometry(df_roads)
+semi_path <- NULL
+for (sp in semi_candidatos) {
+  if (file.exists(sp)) { semi_path <- sp; break }
 }
 
-# Desaninha a lista de municípios para criar tabela relacional: rodovia <-> município
-df_mun_roads <- df_roads %>%
-  mutate(
-    rodovia = str_trim(as.character(rodovia)),
-    ext = as.numeric(ext),
-    is_br = str_starts(rodovia, "BR-")
-  ) %>%
-  separate_rows(mun, sep = ",") %>%
-  mutate(mun = str_trim(mun)) %>%
-  filter(mun != "")
+if (!is.null(semi_path)) {
+  df_semi <- readxl::read_excel(semi_path, sheet = "1477 mun", col_types = "text")
+  semi_pe_codes <- df_semi %>%
+    filter(str_starts(CD_MUN, "26")) %>%
+    pull(CD_MUN) %>%
+    str_trim()
+  matriz <- matriz %>%
+    mutate(semiarido = if_else(cod_ibge %in% semi_pe_codes, 1L, 0L))
+  cat("   -> Semiárido integrado:", sum(matriz$semiarido), "municípios no Semiárido.\n")
+} else {
+  warning("Arquivo lista_municipios_Semiarido_2022.xlsx não encontrado; mantendo semiárido zerado.")
+  matriz <- matriz %>% mutate(semiarido = 0L)
+}
 
-# Regra hierárquica:
-# 1. Preferência para rodovias federais (is_br == TRUE), ordenadas por extensão decrescente
-# 2. Em seguida, rodovias estaduais, ordenadas por extensão decrescente
-df_principal_road <- df_mun_roads %>%
-  arrange(mun, desc(is_br), desc(ext)) %>%
-  group_by(mun) %>%
+# ------------------------------------------------------------------------------
+# 4. Indicadores Econômicos e Demográficos (df_indicadores)
+# ------------------------------------------------------------------------------
+cat("4. Extraindo indicadores de df_indicadores.parquet...\n")
+df_ind <- arrow::read_parquet(file.path(parquet_aurora, "df_indicadores.parquet"))
+
+# Último ano para cada indicador desejado
+ind_recente <- df_ind %>%
+  filter(sigla_indicador %in% c("pct_vab_serv", "pct_vab_adm", "pct_vab_ind", "pct_vab_agro", 
+                                "reposicao_pia", "rd_jovem", "ivcad_taxa", "deficit_esgoto")) %>%
+  group_by(codibge, sigla_indicador) %>%
+  filter(ano == max(ano, na.rm = TRUE)) %>%
   slice(1) %>%
   ungroup() %>%
-  select(municipio = mun, eixo_rodoviario = rodovia)
+  select(cod_ibge = codibge, sigla_indicador, valor) %>%
+  pivot_wider(names_from = sigla_indicador, values_from = valor)
 
-matriz <- matriz %>% left_join(df_principal_road, by = "municipio")
+matriz <- matriz %>% left_join(ind_recente, by = "cod_ibge")
+cat("   -> Indicadores de df_indicadores integrados.\n")
 
-cat("   -> Eixos rodoviários identificados para todos os municípios.\n")
+# ------------------------------------------------------------------------------
+# 5. Empregos de Serviços e TI (RAIS)
+# ------------------------------------------------------------------------------
+cat("5. Integrando empregos da RAIS Tecnologia...\n")
+p_rais <- if (file.exists(file.path(parquet_aurora, "df_rais_tecnologia.parquet"))) {
+  file.path(parquet_aurora, "df_rais_tecnologia.parquet")
+} else {
+  file.path(DIR_OUT_AURORA, "df_rais_tecnologia.parquet")
+}
+
+if (file.exists(p_rais)) {
+  df_rais <- arrow::read_parquet(p_rais)
+  ultimo_ano_rais <- max(df_rais$ano, na.rm = TRUE)
+  rais_mun <- df_rais %>%
+    filter(ano == ultimo_ano_rais) %>%
+    group_by(cod_municipio = as.character(cod_municipio)) %>%
+    summarise(
+      total_emp_serv = sum(n_vinculos, na.rm = TRUE),
+      total_emp_infocom = sum(n_vinculos[is_ti == 1 | is_infocom == 1], na.rm = TRUE),
+      .groups = "drop"
+    )
+  matriz <- matriz %>%
+    left_join(rais_mun, by = c("ibge6" = "cod_municipio")) %>%
+    mutate(
+      total_emp_serv = coalesce(total_emp_serv, 0),
+      total_emp_infocom = coalesce(total_emp_infocom, 0)
+    )
+  cat("   -> Empregos da RAIS integrados.\n")
+} else {
+  matriz <- matriz %>%
+    mutate(total_emp_serv = 0, total_emp_infocom = 0)
+}
+
+# ------------------------------------------------------------------------------
+# 6. Eixos Rodoviários Principais
+# ------------------------------------------------------------------------------
+cat("6. Mapeando eixos rodoviários...\n")
+p_roads <- file.path(DIR_OUT_AURORA, "rodovias_extensoes_sf.rds")
+if (!file.exists(p_roads)) p_roads <- file.path(DIR_RAW_AURORA, "rodovias_extensoes_sf.rds")
+
+if (file.exists(p_roads)) {
+  roads_sf <- readRDS(p_roads)
+  df_mun_roads <- as.data.frame(roads_sf) %>%
+    mutate(
+      mun = stringr::str_trim(as.character(municipio)),
+      rodovia = stringr::str_trim(as.character(rodovia)),
+      ext = as.numeric(extensao_km),
+      is_br = stringr::str_detect(rodovia, "^BR")
+    ) %>%
+    filter(mun != "")
+  
+  df_principal_road <- df_mun_roads %>%
+    arrange(mun, desc(is_br), desc(ext)) %>%
+    group_by(mun) %>%
+    slice(1) %>%
+    ungroup() %>%
+    select(municipio = mun, eixo_rodoviario = rodovia)
+  
+  matriz <- matriz %>% left_join(df_principal_road, by = "municipio")
+} else {
+  matriz <- matriz %>% mutate(eixo_rodoviario = "Não identificado")
+}
+
+# Preenchimento de NAs residuais
+matriz <- matriz %>%
+  mutate(
+    pct_vab_serv = coalesce(pct_vab_serv, 0),
+    pct_vab_adm = coalesce(pct_vab_adm, 0),
+    pct_vab_ind = coalesce(pct_vab_ind, 0),
+    pct_vab_agro = coalesce(pct_vab_agro, 0),
+    total_emp_serv = coalesce(total_emp_serv, 0),
+    total_emp_infocom = coalesce(total_emp_infocom, 0),
+    reposicao_pia = coalesce(reposicao_pia, 0),
+    rd_jovem = coalesce(rd_jovem, 0),
+    ivcad_taxa = coalesce(ivcad_taxa, 0),
+    deficit_esgoto = coalesce(deficit_esgoto, 0),
+    eixo_rodoviario = coalesce(eixo_rodoviario, "Não identificado")
+  )
 
 # ------------------------------------------------------------------------------
 # 7. Formatação Final e Verificação de Integridade
@@ -223,39 +224,25 @@ cols_17 <- c(
   "ivcad_taxa", "deficit_esgoto", "eixo_rodoviario"
 )
 
-matriz_final <- matriz %>%
-  select(all_of(cols_17))
+matriz_final <- matriz %>% select(all_of(cols_17))
 
-cat("\n------------------------------------------------------------------------------\n")
-cat("Verificacao de Integridade da Matriz Consolidada:\n")
-cat("   - Dimensoes:", nrow(matriz_final), "linhas por", ncol(matriz_final), "colunas\n")
-cat("   - Total de valores NA por coluna:\n")
-na_counts <- colSums(is.na(matriz_final))
-print(na_counts)
-
-if (any(na_counts > 0)) {
-  warning("Atencao: Existem colunas com valores NA!")
-} else {
-  cat("\n   [OK] Todos os 17 indicadores estao 100% preenchidos sem nenhum valor nulo!\n")
-}
+cat("\nVerificação de integridade da Matriz:\n")
+cat("   - Linhas:", nrow(matriz_final), "x Colunas:", ncol(matriz_final), "\n")
 
 # ------------------------------------------------------------------------------
 # 8. Exportação dos Arquivos Parquet
 # ------------------------------------------------------------------------------
-file_name <- "matriz_desenvolvimento_regional.parquet"
-file_name_2 <- "matriz_desenvolvimento_regional.csv"
-path_out_1 <- file.path(out_dir_1, file_name)
-path_out_2 <- file.path(out_dir_2, file_name)
-path_out_3 <- file.path(out_dir_1, file_name_2)
+out_paths <- c(
+  file.path(parquet_aurora, "matriz_desenvolvimento_regional.parquet"),
+  file.path(DIR_OUT_AURORA, "matriz_desenvolvimento_regional.parquet")
+)
 
-cat("\nExportando arquivos Parquet...\n")
-arrow::write_parquet(matriz_final, path_out_1)
-write.csv2(matriz_final, path_out_3)
-cat("   -> Salvo com sucesso em:", path_out_1, "\n")
-
-arrow::write_parquet(matriz_final, path_out_2)
-cat("   -> Salvo com sucesso em:", path_out_2, "\n")
+for (op in out_paths) {
+  dir.create(dirname(op), recursive = TRUE, showWarnings = FALSE)
+  arrow::write_parquet(matriz_final, op)
+  cat("   -> Salvo com sucesso em:", op, "\n")
+}
 
 cat("\n==============================================================================\n")
-cat("ETL concluido com sucesso!\n")
+cat("ETL Matriz de Desenvolvimento Regional concluído com sucesso!\n")
 cat("==============================================================================\n")

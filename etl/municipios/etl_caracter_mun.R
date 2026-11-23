@@ -12,6 +12,7 @@
 library(dplyr)
 library(tidyr)
 library(stringr)
+library(purrr)
 library(googledrive)
 library(readxl)
 library(janitor)
@@ -19,6 +20,7 @@ library(yaml)
 library(arrow)
 library(cli)
 library(readr)
+library(jsonlite)
 
 # ------------------------------------------------------------------------------
 # 2. RESOLUÇÃO DE DIRETÓRIOS E AMBIENTE (FALLBACK HIERÁRQUICO)
@@ -84,13 +86,20 @@ if (file.exists(auth_path)) {
 # ------------------------------------------------------------------------------
 # 4. DICIONÁRIO DE INDICADORES
 # ------------------------------------------------------------------------------
-caminho_lista_ind <- file.path(DIR_RAW_AURORA, "indicadores/lista de indicadores.xlsx")
 
-if (!file.exists(caminho_lista_ind)) {
+## Lista de indicadores ----
+url_lista <- "https://docs.google.com/spreadsheets/d/1WNuK75MyAHYofzvd6wkiVIG-FHpwqruIDyUMtkfBlOI/edit?gid=1805893996#gid=1805893996"
+caminho_indicador <- tempfile(fileext = ".xlsx")
+
+drive_download(file = googledrive::as_id(url_lista), path = caminho_indicador, overwrite = TRUE)
+
+# caminho_lista_ind <- file.path(DIR_RAW_AURORA, "indicadores/lista de indicadores.xlsx")
+
+if (!file.exists(caminho_indicador)) {
   cli_abort("Arquivo de lista de indicadores não encontrado: {.path {caminho_lista_ind}}")
 }
 
-lista_de_indicadores <- readxl::read_excel(caminho_lista_ind, sheet = "Sheet1")
+lista_de_indicadores <- readxl::read_excel(caminho_indicador, sheet = "Municípios")
 cli_alert_success("Dicionário de indicadores carregado ({nrow(lista_de_indicadores)} registros).")
 
 # ------------------------------------------------------------------------------
@@ -534,7 +543,8 @@ df_agua_long <- df_agua_rede %>%
   pivot_longer(
     cols = -c(codigo, unidade_territorial, uf, referencia),
     names_to = "nm_indicador_raw",
-    values_to = "indicador"
+    values_to = "indicador",
+    values_transform = as.character  # <-- Resolve o conflito de tipos na hora do empilhamento
   ) %>%
   mutate(
     ano = as.numeric(str_extract(referencia, "\\d{4}$")),
@@ -549,7 +559,6 @@ df_agua_long <- df_agua_rede %>%
       TRUE ~ nm_indicador_raw
     ),
     cod_municipio = as.character(codigo),
-    indicador = as.character(indicador),
     mes_referencia = referencia
   ) %>%
   select(cod_municipio, nm_municipio = unidade_territorial, ano, nm_indicador, indicador, mes_referencia)
@@ -558,7 +567,8 @@ df_esgoto_long <- df_agua_esgoto %>%
   pivot_longer(
     cols = -c(codigo, unidade_territorial, uf, referencia),
     names_to = "nm_indicador_raw",
-    values_to = "indicador"
+    values_to = "indicador",
+    values_transform = as.character
   ) %>%
   mutate(
     ano = as.numeric(str_extract(referencia, "\\d{4}$")),
@@ -582,28 +592,38 @@ df_esgoto_long <- df_agua_esgoto %>%
 
 df_cad_pessoas_long <- df_cad_pessoas %>%
   pivot_longer(
-    cols = -c(codigo, unidade_territorial, uf, referencia),
+    cols = -c(codigo, unidade_territorial, uf, referencia_cad_unico),
     names_to = "nm_indicador_raw",
-    values_to = "indicador"
+    values_to = "indicador",
+    values_transform = as.character
   ) %>%
   mutate(
-    ano = as.numeric(str_extract(referencia, "\\d{4}$")),
+    ano = as.numeric(str_extract(referencia_cad_unico, "\\d{4}$")),
     nm_indicador = case_when(
       nm_indicador_raw == "tx_pessoas_cad_unico" ~ "Tx. Pessoas no Cad Único",
-      nm_indicador_raw == "pessoas_cad_unico"    ~ "Pessoas no Cad Único",
+      nm_indicador_raw == "pessoas"    ~ "Pessoas no Cad Único",
       TRUE ~ nm_indicador_raw
     ),
+    # sigla_indicador = case_when(
+    #   nm_indicador_raw == "tx_pessoas_cad_unico" ~ "tx_cad_pessoas",
+    #   nm_indicador_raw == "pessoas_cad_unico"    ~ "cad_pessoas",
+    #   TRUE ~ nm_indicador_raw
+    # ),
     cod_municipio = as.character(codigo),
     indicador = as.character(indicador), 
-    mes_referencia = referencia
+    mes_referencia = referencia_cad_unico
   ) %>%
   select(cod_municipio, nm_municipio = unidade_territorial, ano, nm_indicador, indicador, mes_referencia)
 
+df_cad_pessoas_long %>% View()
+
 df_vulnerabilidade_long <- bind_rows(
-  df_agua_long,
-  df_esgoto_long,
-  df_cad_pessoas_long
+  df_agua_long        %>% mutate(mes_referencia = format(mes_referencia, "%m/%Y")), # ou as.character(mes_referencia)
+  df_esgoto_long      %>% mutate(mes_referencia = format(mes_referencia, "%m/%Y")), # ajuste conforme o tipo dele
+  df_cad_pessoas_long %>% mutate(mes_referencia = as.character(mes_referencia))
 )
+
+df_vulnerabilidade_long %>% View()
 
 url_urb <- "https://docs.google.com/spreadsheets/d/1eoH5dTmx5xipoV_plL7jIPB5yvQNHx1rOqIk3_UZM9o/edit?gid=0#gid=0"
 caminho_temp_urb <- tempfile(fileext = ".xlsx")
@@ -846,6 +866,8 @@ df_indicadores_empilhados <- bind_rows(
     grupo,
     tipo,
     polaridade,
+    fonte,
+    hiperlink,
     everything()
   )
 
@@ -899,3 +921,122 @@ arrow::write_parquet(
 cli_alert_success("Arquivo Parquet oficial salvo em {.path {caminho_parquet_out}}.")
 
 cli_alert_success("Processamento de etl_caracter_mun.R concluído com sucesso!")
+
+
+# --- 8.3 Metadados JSON (Para Frontend / Go) ---
+cli_alert_info("Gerando dicionário JSON de metadados dos municípios...")
+
+# Normaliza possíveis variações nos nomes das colunas da aba "Municípios"
+meta_mun_normalizado <- lista_de_indicadores %>%
+  rename_with(~ case_when(
+    . == "direcao_desejave"     ~ "direcao_desejavel",
+    . == "limpacto_planeamento" ~ "impacto_planejamento",
+    TRUE ~ .
+  ))
+
+cols_esperadas_mun <- c(
+  "sigla_indicador", "nm_indicador", "nm_fantasia",
+  "fonte", "hiperlink", "grupo", "eixo", "tipo", "polaridade", "clp",
+  "subdimensao", "natureza", "formula_katex",
+  "interpretacao", "limiar_corte", "direcao_desejavel", "impacto_planejamento"
+)
+
+for (col in cols_esperadas_mun) {
+  if (!col %in% names(meta_mun_normalizado)) {
+    meta_mun_normalizado[[col]] <- NA_character_
+  }
+}
+
+df_meta_mun_limpo <- meta_mun_normalizado %>%
+  filter(!is.na(sigla_indicador) | !is.na(nm_indicador)) %>%
+  mutate(across(all_of(cols_esperadas_mun), ~ na_if(str_trim(as.character(.)), "")))
+
+lista_metadados_mun <- list()
+
+for (i in seq_len(nrow(df_meta_mun_limpo))) {
+  row <- df_meta_mun_limpo[i, ]
+  
+  # Sub-objeto referencia_analise (mantém compatibilidade com o modal unificado #modalMetadado)
+  ref_analise <- list(
+    interpretacao        = row$interpretacao,
+    limiar_corte         = row$limiar_corte,
+    direcao_desejavel    = row$direcao_desejavel,
+    impacto_planejamento = row$impacto_planejamento
+  ) %>%
+    purrr::discard(is.na)
+  
+  # Objeto principal com todos os metadados
+  item_meta <- list(
+    cd_indicador       = coalesce(row$sigla_indicador, row$nm_indicador),
+    nm_indicador       = row$nm_indicador,
+    nm_fantasia        = row$nm_fantasia,
+    eixo               = row$eixo,
+    grupo              = row$grupo,
+    subdimensao        = row$subdimensao,
+    tipo               = row$tipo,
+    natureza           = row$natureza,
+    polaridade         = row$polaridade,
+    clp                = row$clp,
+    fonte              = row$fonte,
+    hiperlink          = row$hiperlink,
+    formula_katex      = row$formula_katex,
+    referencia_analise = ref_analise
+  ) %>%
+    purrr::discard(~ is.null(.) || (length(.) == 1 && is.na(.)))
+  
+  # 1. Indexa pela sigla (ex: "idhm", "pib_pcap")
+  if (!is.na(row$sigla_indicador)) {
+    lista_metadados_mun[[row$sigla_indicador]] <- item_meta
+  }
+  
+  # 2. Indexa pelo nome oficial (ex: "IDHM", "PIB per capita")
+  if (!is.na(row$nm_indicador) && (is.na(row$sigla_indicador) || row$nm_indicador != row$sigla_indicador)) {
+    lista_metadados_mun[[row$nm_indicador]] <- item_meta
+  }
+  
+  # 3. Indexa pelo nome fantasia, caso exista e seja distinto
+  if (!is.na(row$nm_fantasia) &&
+      (is.na(row$sigla_indicador) || row$nm_fantasia != row$sigla_indicador) &&
+      (is.na(row$nm_indicador)    || row$nm_fantasia != row$nm_indicador)) {
+    lista_metadados_mun[[row$nm_fantasia]] <- item_meta
+  }
+}
+
+caminho_json_mun <- file.path(DIR_OUT_AURORA, "json", "metadados_indicadores_mun.json")
+dir.create(dirname(caminho_json_mun), recursive = TRUE, showWarnings = FALSE)
+
+jsonlite::write_json(
+  x          = lista_metadados_mun,
+  path       = caminho_json_mun,
+  auto_unbox = TRUE,
+  pretty     = TRUE
+)
+
+cli_alert_success("Metadados JSON dos municípios salvos em {.path {caminho_json_mun}}.")
+
+# 
+# 
+# # Exportação para Google Sheets ----
+# cli::cli_alert_info("Iniciando exportação para o Google Sheets...")
+# 
+# # 1. Autenticação via Service Account (padrão DIR_RAW_AURORA)
+# google_token_path <- file.path(DIR_RAW_AURORA, "r-sheets-hugo-0788cc358cb5.json")
+# 
+# if (file.exists(google_token_path)) {
+#   googlesheets4::gs4_auth(path = google_token_path)
+# } else {
+#   cli::cli_warn("Token JSON não encontrado em {.path {google_token_path}}. Tentando autenticação padrão...")
+#   googlesheets4::gs4_auth()
+# }
+# 
+# # 2. ID da Planilha de destino
+# sheet_id_destino <- "1swgMg9_KGHltyCoufQS5eaQXwePtfq-20fIX3eyhugc"
+# 
+# # 3. Escrita da base consolidada na primeira aba (gid = 0)
+# googlesheets4::sheet_write(
+#   data  = df_indicadores_final,
+#   ss    = sheet_id_destino,
+#   sheet = 1
+# )
+# 
+# cli::cli_alert_success("Base {.val df_indicadores_ufs} exportada com sucesso para o Google Sheets!")

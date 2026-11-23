@@ -1,4 +1,4 @@
-﻿cli::cli_alert_success("Atualizando Martin.")
+cli::cli_alert_success("Atualizando Martin.")
 
 system(" ssh -p 7654 hugo@10.238.112.127 update_martin.sh")
 

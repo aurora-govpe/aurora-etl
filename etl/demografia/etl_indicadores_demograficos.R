@@ -1,12 +1,33 @@
-﻿library(arrow)
+library(arrow)
 library(dplyr)
 library(stringr)
 library(tidyr)
 
+# ------------------------------------------------------------------------------
+# 2. RESOLUÇÃO DE DIRETÓRIOS E AMBIENTE (FALLBACK HIERÁRQUICO)
+# ------------------------------------------------------------------------------
+is_linux <- Sys.info()[["sysname"]] == "Linux"
+if (is_linux) {
+  Sys.setlocale(locale = "pt_BR.utf8")
+}
+
+if (file.exists("R/paths.R")) {
+  source("R/paths.R")
+} else if (file.exists("paths.R")) {
+  source("paths.R")
+} else if (file.exists("../paths.R")) {
+  source("../paths.R")
+} else if (file.exists("etl/paths.R")) {
+  source("etl/paths.R")
+}
+
+if (!exists("DIR_ETL"))        DIR_ETL        <- getwd()
+if (!exists("DIR_RAW_AURORA")) DIR_RAW_AURORA <- file.path(DIR_ETL, "data")
+if (!exists("DIR_OUT_AURORA")) DIR_OUT_AURORA <- file.path(DIR_ETL, "data")
+
 # 1. SETUP E CARGA DE DADOS PROCESSADOS ----
-painel_demografico <- read_parquet(
-  'data/indicadores/demografia/painel_demografico_pe.parquet'
-)
+painel_demografico <- read_parquet(file.path(DIR_RAW_AURORA, 'indicadores/demografia/painel_demografico_pe.parquet'
+))
 
 # 2. PROCESSAMENTO DOS INDICADORES DEMOGRÁFICOS ----
 

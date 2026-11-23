@@ -1,4 +1,4 @@
-﻿library(data.table)
+library(data.table)
 library(janitor)
 
 ficha_municipal <- fread(
