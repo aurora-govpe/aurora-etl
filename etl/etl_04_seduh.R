@@ -111,7 +111,7 @@ seduh_df_multi <- readxl::read_excel(seduh_file_source, col_types = "text") %>%
     produto              = objeto_resumido,
     percent_execucao     = percent_obra,
     observacoes          = observacoes_aurora,
-    empresa_contratada   = empresa, 
+    empresa_contratada   = empresa,
     indicador_secundario = indicador_previsto
   ) %>%
   # filter(!fonte %in% c("[SEDUH] Novos Projetos", "[SEDUH] NOVOS PROJETOS", "[SCI] Ilumina Ata", "[SCI] ILUMINA ATA")) %>%

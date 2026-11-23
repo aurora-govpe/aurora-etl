@@ -1158,7 +1158,7 @@ meta_normalizado <- meta_indicadores %>%
 cols_esperadas <- c(
   "sigla_indicador", "nm_indicador", "nm_fantasia",
   "fonte", "hiperlink", "grupo", "eixo", "tipo", "polaridade",
-  "subdimensao", "natureza", "formula_katex",
+  "subdimensao", "natureza", "formula_katex", "clp",
   "interpretacao", "limiar_corte", "direcao_desejavel", "impacto_planejamento"
 )
 
@@ -1197,6 +1197,7 @@ for (i in seq_len(nrow(df_meta_limpo))) {
     tipo               = row$tipo,
     natureza           = row$natureza,
     polaridade         = row$polaridade,
+    clp                = row$clp,
     fonte              = row$fonte,
     hiperlink          = row$hiperlink,
     formula_katex      = row$formula_katex,

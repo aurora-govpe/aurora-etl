@@ -481,7 +481,8 @@ df_agua_long <- df_agua_rede %>%
   pivot_longer(
     cols = -c(codigo, unidade_territorial, uf, referencia),
     names_to = "nm_indicador_raw",
-    values_to = "indicador"
+    values_to = "indicador",
+    values_transform = as.character  # <-- Resolve o conflito de tipos na hora do empilhamento
   ) %>%
   mutate(
     ano = as.numeric(str_extract(referencia, "\\d{4}$")),
@@ -496,7 +497,6 @@ df_agua_long <- df_agua_rede %>%
       TRUE ~ nm_indicador_raw
     ),
     cod_municipio = as.character(codigo),
-    indicador = as.character(indicador),
     mes_referencia = referencia
   ) %>%
   select(cod_municipio, nm_municipio = unidade_territorial, ano, nm_indicador, indicador, mes_referencia)
@@ -505,7 +505,8 @@ df_esgoto_long <- df_agua_esgoto %>%
   pivot_longer(
     cols = -c(codigo, unidade_territorial, uf, referencia),
     names_to = "nm_indicador_raw",
-    values_to = "indicador"
+    values_to = "indicador",
+    values_transform = as.character
   ) %>%
   mutate(
     ano = as.numeric(str_extract(referencia, "\\d{4}$")),
@@ -531,26 +532,36 @@ df_cad_pessoas_long <- df_cad_pessoas %>%
   pivot_longer(
     cols = -c(codigo, unidade_territorial, uf, referencia_cad_unico),
     names_to = "nm_indicador_raw",
-    values_to = "indicador"
+    values_to = "indicador",
+    values_transform = as.character
   ) %>%
   mutate(
     ano = as.numeric(str_extract(referencia_cad_unico, "\\d{4}$")),
     nm_indicador = case_when(
       nm_indicador_raw == "tx_pessoas_cad_unico" ~ "Tx. Pessoas no Cad Único",
-      nm_indicador_raw == "pessoas_cad_unico"    ~ "Pessoas no Cad Único",
+      nm_indicador_raw == "pessoas"    ~ "Pessoas no Cad Único",
       TRUE ~ nm_indicador_raw
     ),
+    # sigla_indicador = case_when(
+    #   nm_indicador_raw == "tx_pessoas_cad_unico" ~ "tx_cad_pessoas",
+    #   nm_indicador_raw == "pessoas_cad_unico"    ~ "cad_pessoas",
+    #   TRUE ~ nm_indicador_raw
+    # ),
     cod_municipio = as.character(codigo),
     indicador = as.character(indicador), 
     mes_referencia = referencia_cad_unico
   ) %>%
   select(cod_municipio, nm_municipio = unidade_territorial, ano, nm_indicador, indicador, mes_referencia)
 
+df_cad_pessoas_long %>% View()
+
 df_vulnerabilidade_long <- bind_rows(
-  df_agua_long,
-  df_esgoto_long,
-  df_cad_pessoas_long
+  df_agua_long        %>% mutate(mes_referencia = format(mes_referencia, "%m/%Y")), # ou as.character(mes_referencia)
+  df_esgoto_long      %>% mutate(mes_referencia = format(mes_referencia, "%m/%Y")), # ajuste conforme o tipo dele
+  df_cad_pessoas_long %>% mutate(mes_referencia = as.character(mes_referencia))
 )
+
+df_vulnerabilidade_long %>% View()
 
 url_urb <- "https://docs.google.com/spreadsheets/d/1eoH5dTmx5xipoV_plL7jIPB5yvQNHx1rOqIk3_UZM9o/edit?gid=0#gid=0"
 caminho_temp_urb <- tempfile(fileext = ".xlsx")
@@ -858,7 +869,7 @@ meta_mun_normalizado <- lista_de_indicadores %>%
 
 cols_esperadas_mun <- c(
   "sigla_indicador", "nm_indicador", "nm_fantasia",
-  "fonte", "hiperlink", "grupo", "eixo", "tipo", "polaridade",
+  "fonte", "hiperlink", "grupo", "eixo", "tipo", "polaridade", "clp",
   "subdimensao", "natureza", "formula_katex",
   "interpretacao", "limiar_corte", "direcao_desejavel", "impacto_planejamento"
 )
@@ -898,6 +909,7 @@ for (i in seq_len(nrow(df_meta_mun_limpo))) {
     tipo               = row$tipo,
     natureza           = row$natureza,
     polaridade         = row$polaridade,
+    clp                = row$clp,
     fonte              = row$fonte,
     hiperlink          = row$hiperlink,
     formula_katex      = row$formula_katex,
