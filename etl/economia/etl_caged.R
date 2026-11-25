@@ -73,9 +73,10 @@ meses_disp <- tryCatch({
 })
 
 # Se disponível, filtra os últimos 24 meses; caso contrário, define janela padrão
-if (!is.null(meses_disp) && length(meses_disp) > 0) {
+if (!is.null(meses_disp) && nrow(meses_disp) > 0) {
   # Ordena e seleciona competências recentes
-  meses_alvo <- tail(sort(meses_disp), 24)
+  periodos_todos <- sort(as.character(meses_disp$period))
+  meses_alvo <- tail(periodos_todos, 24)
 } else {
   # Fallback: meses recentes até o mês anterior
   mes_atual <- Sys.Date()
@@ -95,9 +96,10 @@ colunas_interesse <- c(
 dados_caged_pe <- tryCatch({
   # Executa download e leitura em stream com filtro direto de UF
   cagedr::caged_fetch(
-    months = meses_alvo,
+    period = meses_alvo,
     uf = 26, # Pernambuco
-    keep_cols = colunas_interesse
+    files = "MOV",
+    columns = colunas_interesse
   )
 }, error = function(e) {
   message("⚠️ Erro no caged_fetch direto: ", e$message)
@@ -106,10 +108,10 @@ dados_caged_pe <- tryCatch({
   lista_meses <- list()
   for (m in meses_alvo) {
     res_m <- tryCatch({
-      cagedr::caged_fetch(months = m, uf = 26)
+      cagedr::caged_fetch(period = m, uf = 26, files = "MOV", columns = colunas_interesse)
     }, error = function(err) NULL)
     if (!is.null(res_m) && nrow(res_m) > 0) {
-      lista_meses[[m]] <- res_m
+      lista_meses[[as.character(m)]] <- res_m
     }
   }
   bind_rows(lista_meses)
