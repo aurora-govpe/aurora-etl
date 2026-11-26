@@ -752,6 +752,360 @@ if (file.exists(caminho_anatel)) {
   df_anatel_long <- tibble()
 }
 
+## 5.15 Observatório da Criança e do Adolescente (Fundação Abrinq) ----
+# Planilhas baixadas do Observatório da Criança e do Adolescente (observatoriocrianca.org.br).
+# Todas seguem o mesmo layout: aba "Índice" + uma aba por recorte, skip = 2, colunas
+# Localidade | Código IBGE | Código DataSUS | anos ("AAAA", "AAAA (%)", "AAAA (absoluto)" ou
+# "Trimestre 1/2012"). As tabelas abas_* dizem qual sigla sai de cada aba: `sigla` recebe a
+# coluna do ano (ou do %) e `sigla_abs` a coluna "(absoluto)". Os nomes das abas vêm truncados
+# da fonte; o comentário de cada linha traz o rótulo completo da aba (célula A2).
+# O nm_indicador vem da lista de indicadores (aba "Municípios"), pela sigla.
+
+extrair_abrinq_mun <- function(caminho_arquivo, abas_siglas, traco_como_zero = FALSE) {
+  if (!file.exists(caminho_arquivo)) {
+    cli_alert_warning("Planilha Abrinq não encontrada: {.path {caminho_arquivo}}")
+    return(tibble())
+  }
+
+  map_dfr(seq_len(nrow(abas_siglas)), function(i) {
+    df_raw <- suppressWarnings(
+      suppressMessages(
+        read_excel(caminho_arquivo, sheet = abas_siglas$aba[i], skip = 2, col_types = "text")
+      )
+    )
+
+    df_raw %>%
+      rename_with(~ str_remove_all(., "[\u200B-\u200D\uFEFF]") %>% str_trim()) %>%
+      rename(cod_municipio = `Código IBGE`, nm_municipio = Localidade) %>%
+      mutate(cod_municipio = str_trim(cod_municipio)) %>%
+      filter(str_starts(cod_municipio, "26"), nchar(cod_municipio) == 7, cod_municipio != "2600000") %>%
+      select(cod_municipio, nm_municipio, matches("[0-9]{4}")) %>%
+      pivot_longer(
+        cols      = -c(cod_municipio, nm_municipio),
+        names_to  = "col_orig",
+        values_to = "indicador"
+      ) %>%
+      mutate(
+        ano     = as.numeric(str_extract(col_orig, "[0-9]{4}")),
+        metrica = case_when(
+          str_detect(col_orig, "absoluto")           ~ "abs",
+          str_detect(col_orig, "\\(%\\)|^Trimestre") ~ "pct",
+          TRUE                                       ~ "valor"
+        ),
+        sigla_indicador = if_else(metrica == "abs", abas_siglas$sigla_abs[i], abas_siglas$sigla[i]),
+        mes_referencia  = if_else(str_detect(col_orig, "^Trimestre"), paste0("T", str_extract(col_orig, "(?<=Trimestre )[1-4]")), NA_character_),
+        indicador       = str_trim(indicador),
+        indicador       = if_else(traco_como_zero & indicador %in% "-", "0", indicador)
+      ) %>%
+      distinct(cod_municipio, sigla_indicador, ano, mes_referencia, .keep_all = TRUE) %>%  # algumas abas repetem a coluna de um ano
+      filter(!is.na(sigla_indicador), !is.na(ano), !indicador %in% c("-", "ND", "nan", "NA", NA)) %>%
+      mutate(indicador = if_else(metrica == "pct", as.character(round(as.numeric(indicador), 2)), indicador)) %>%
+      select(cod_municipio, nm_municipio, ano, sigla_indicador, indicador, mes_referencia)
+  })
+}
+
+## 5.15.1 Crianças de 5 a 10 anos abaixo do peso ideal ----
+# Aba 2, colunas "AAAA (%)" e "AAAA (absoluto)"; "-" = sem dado.
+nm_peso_pct <- "Crianças de 5 a 10 anos abaixo do peso ideal (%)"
+nm_peso_abs <- "Crianças de 5 a 10 anos abaixo do peso ideal (nº)"
+
+df_peso_ideal_long <- readxl::read_excel(
+  file.path(DIR_RAW_AURORA, "saude/Proporção de crianças de 5 a 10 anos de idade abaixo do peso ideal.xlsx"),
+  sheet = 2,
+  skip = 2,
+  col_types = "text"
+) %>%
+  rename_with(~ str_remove_all(., "[\u200B-\u200D\uFEFF]") %>% str_trim()) %>%
+  rename(cod_municipio = `Código IBGE`, nm_municipio = Localidade) %>%
+  filter(str_starts(cod_municipio, "26"), nchar(cod_municipio) == 7) %>%
+  select(cod_municipio, nm_municipio, matches("^[0-9]{4} \\((%|absoluto)\\)$")) %>%
+  pivot_longer(
+    cols = -c(cod_municipio, nm_municipio),
+    names_to = "col_orig",
+    values_to = "indicador"
+  ) %>%
+  mutate(
+    ano = as.numeric(str_extract(col_orig, "^[0-9]{4}")),
+    eh_abs = str_detect(col_orig, "absoluto"),
+    nm_indicador = if_else(eh_abs, nm_peso_abs, nm_peso_pct),
+    valor = suppressWarnings(as.numeric(indicador)),
+    indicador = case_when(
+      is.na(valor) ~ NA_character_,
+      eh_abs       ~ as.character(valor),
+      TRUE         ~ as.character(round(valor, 2))  # remove ruído de ponto flutuante (3.5000000000000004)
+    ),
+    mes_referencia = NA_character_
+  ) %>%
+  filter(!is.na(indicador)) %>%
+  select(cod_municipio, nm_municipio, ano, nm_indicador, indicador, mes_referencia)
+cli_alert_success("Peso ideal (5 a 10 anos) processado.")
+
+## 5.15.2 Óbitos maternos por cor/raça ----
+# Decisão D-001 (Kattine, 10/11/2026): de 2016 em diante o zero vem como "-" na planilha
+# (de 2000 a 2015 o 0 é explícito). "-" = 0 óbito.
+
+caminho_obitos_mat <- file.path(DIR_RAW_AURORA, "saude/Número de óbitos maternos segundo cor_raça.xlsx")
+
+abas_obitos_mat <- tribble(
+  ~aba,                              ~sigla,                ~sigla_abs,
+  "1 -   Indígena",                  "obitos_mat_indigena", NA_character_,  # Indígena
+  "2 -   Preta",                     "obitos_mat_preta",    NA_character_,  # Preta
+  "3 -   Branca",                    "obitos_mat_branca",   NA_character_,  # Branca
+  "4 -   Amarela",                   "obitos_mat_amarela",  NA_character_,  # Amarela
+  "5 -   Parda",                     "obitos_mat_parda",    NA_character_,  # Parda
+  "6 -   Ignorada",                  "obitos_mat_ignorada", NA_character_,  # Ignorado
+  "7 -   Número de óbitos maternos", "obitos_mat_total",    NA_character_  # Total de óbitos maternos no ano
+)
+
+df_obitos_mat_long <- extrair_abrinq_mun(caminho_obitos_mat, abas_obitos_mat, traco_como_zero = TRUE)
+cli_alert_success("Óbitos maternos por cor/raça processado(s).")
+
+## 5.15.3 Acidentes de trabalho de crianças e adolescentes (5 a 17 anos) ----
+# Decisão D-002 (Kattine, 11/11/2026): "-" = 0 notificação. A soma dos 185 municípios
+# de PE bate com o total da UF.
+
+caminho_acid_cor <- file.path(DIR_RAW_AURORA, "cidadania/Notificações de acidentes de trabalho entre crianças e adolescentes entre 5 e 17 anos de idade segundo cor_raça.xlsx")
+caminho_acid_idade <- file.path(DIR_RAW_AURORA, "cidadania/Notificações acidentes de trabalho entre crianças e adolescentes entre 5 e 17 anos de idade.xlsx")
+caminho_acid_sexo <- file.path(DIR_RAW_AURORA, "cidadania/Notificações de acidentes de trabalho entre crianças e adolescentes entre 5 e 17 anos de idade segundo sexo.xlsx")
+caminho_acid_evol <- file.path(DIR_RAW_AURORA, "cidadania/Notificações de acidentes de trabalho entre crianças e adolescentes entre 5 e 17 anos de idade segundo evolução dos casos.xlsx")
+
+abas_acid_cor <- tribble(
+  ~aba,                              ~sigla,                   ~sigla_abs,
+  "2 -   Notificações de acidentes", "acid_trab_5_17_total",   NA_character_,  # Total de acidentes relacionados ao trabalho de crianças e adolescentes entre 5 e 17 anos idade
+  "3 -   Amarela",                   "acid_trab_cor_amarela",  NA_character_,  # Amarela
+  "4 -   Indígena",                  "acid_trab_cor_indigena", NA_character_,  # Indígena
+  "5 -   Preta",                     "acid_trab_cor_preta",    NA_character_,  # Preta
+  "6 -   Parda",                     "acid_trab_cor_parda",    NA_character_,  # Parda
+  "7 -   Ignorada",                  "acid_trab_cor_ignorada", NA_character_,  # Ignorado
+  "8 -   Branca",                    "acid_trab_cor_branca",   NA_character_  # Branca
+)
+
+abas_acid_idade <- tribble(
+  ~aba,                          ~sigla,            ~sigla_abs,
+  "1 -   5 a 9 anos de idade",   "acid_trab_5_9",   NA_character_,  # 5 a 9 anos de idade
+  "4 -   10 a 14 anos de idade", "acid_trab_10_14", NA_character_,  # 10 a 14 anos de idade
+  "5 -   15 a 17 anos de idade", "acid_trab_15_17", NA_character_  # 15 a 17 anos de idade
+)
+
+abas_acid_sexo <- tribble(
+  ~aba,              ~sigla,                     ~sigla_abs,
+  "2 -   Ignorado",  "acid_trab_sexo_ignorado",  NA_character_,  # Sexo ignorado
+  "3 -   Feminino",  "acid_trab_sexo_feminino",  NA_character_,  # Feminino
+  "4 -   Masculino", "acid_trab_sexo_masculino", NA_character_  # Masculino
+)
+
+abas_acid_evol <- tribble(
+  ~aba,                              ~sigla,                          ~sigla_abs,
+  "1 -   Ignorada",                  "acid_trab_evol_ignorada",       NA_character_,  # Ignorado/Branco
+  "2 -   Incapacidade parcial perm", "acid_trab_evol_incap_parcial",  NA_character_,  # Incapacidade parcial permanente
+  "4 -   Incapacidade total perman", "acid_trab_evol_incap_total",    NA_character_,  # Incapacidade total permanente
+  "5 -   Outra",                     "acid_trab_evol_outra",          NA_character_,  # Outra
+  "6 -   Óbito por outras causas",   "acid_trab_evol_obito_outras",   NA_character_,  # Óbito por outras causas
+  "7 -   Óbito pelo acidente",       "acid_trab_evol_obito_acidente", NA_character_,  # Óbito pelo acidente
+  "8 -   Incapacidade temporária",   "acid_trab_evol_incap_temp",     NA_character_,  # Incapacidade temporária
+  "9 -   Cura",                      "acid_trab_evol_cura",           NA_character_  # Cura
+)
+
+df_acid_trab_long <- bind_rows(
+  extrair_abrinq_mun(caminho_acid_cor, abas_acid_cor, traco_como_zero = TRUE),
+  extrair_abrinq_mun(caminho_acid_idade, abas_acid_idade, traco_como_zero = TRUE),
+  extrair_abrinq_mun(caminho_acid_sexo, abas_acid_sexo, traco_como_zero = TRUE),
+  extrair_abrinq_mun(caminho_acid_evol, abas_acid_evol, traco_como_zero = TRUE)
+)
+cli_alert_success("Acidentes de trabalho de crianças e adolescentes (5 a 17 anos) processado(s).")
+
+## 5.15.4 Mortalidade por saneamento inadequado (taxa e nº de óbitos por faixa etária) ----
+# Aqui o "-" é descartado (o 0 aparece explícito; "-" = não calculado).
+# A aba "Idade ignorada" só tem o nº de óbitos (a taxa é toda "-").
+
+caminho_mort <- file.path(DIR_RAW_AURORA, "saude/Taxa de mortalidade atribuída a fontes de água inadequadas, saneamento inadequado e falta de higiene segundo grupos etários.xlsx")
+
+abas_mort <- tribble(
+  ~aba,                              ~sigla,                    ~sigla_abs,
+  "4 -   0 a 4 anos de idade",       "mort_sanea_taxa_0_4",     "mort_sanea_abs_0_4",  # zero a quatro anos de idade
+  "9 -   5 a 9 anos de idade",       "mort_sanea_taxa_5_9",     "mort_sanea_abs_5_9",  # cinco a nove anos de idade
+  "6 -   10 a 14 anos de idade",     "mort_sanea_taxa_10_14",   "mort_sanea_abs_10_14",  # dez a 14 anos de idade
+  "1 -   15 a 19 anos de idade",     "mort_sanea_taxa_15_19",   "mort_sanea_abs_15_19",  # 15 a 19 anos de idade
+  "3 -   20 a 29 anos de idade",     "mort_sanea_taxa_20_29",   "mort_sanea_abs_20_29",  # 20 a 29 anos de idade
+  "10 -   30 a 39 anos de idade",    "mort_sanea_taxa_30_39",   "mort_sanea_abs_30_39",  # 30 a 39 anos de idade
+  "2 -   40 a 49 anos de idade",     "mort_sanea_taxa_40_49",   "mort_sanea_abs_40_49",  # 40 a 49 anos de idade
+  "8 -   50 anos ou mais de idade",  "mort_sanea_taxa_50_mais", "mort_sanea_abs_50_mais",  # 50 anos ou mais de idade
+  "7 -   Idade ignorada",            NA_character_,             "mort_sanea_abs_ignorada",  # Idade ignorada
+  "5 -   Taxa de mortalidade atrib", "mort_sanea_taxa_total",   "mort_sanea_abs_total"  # Taxa de mortalidade total
+)
+
+df_mort_sanea_long <- extrair_abrinq_mun(caminho_mort, abas_mort) %>%
+  # Decisão D-003 (Kattine, 11/11/2026): a taxa municipal de 2020 em diante está em escala
+  # inconsistente na fonte (ex.: Recife 2024 = 0,06; o esperado seria ~7). Taxa só até 2019.
+  filter(!(str_starts(sigla_indicador, "mort_sanea_taxa_") & ano > 2019))
+cli_alert_success("Mortalidade por saneamento inadequado (taxa e nº de óbitos por faixa etária) processado(s).")
+
+## 5.15.5 Trabalho infantil (5 a 17 anos), Lista TIP e ocupação agropecuária ----
+# Só UFs, exceto a ocupação em estabelecimentos agropecuários (municípios e UFs, só 2017).
+# tip_ocup e ti_ocup são trimestrais: ano + mes_referencia = "T1".."T4".
+
+caminho_ti_agro <- file.path(DIR_RAW_AURORA, "cidadania/População com até 14 anos de idade ocupada em estabelecimentos agropecuários.xlsx")
+
+abas_ti_agro <- tribble(
+  ~aba,                         ~sigla,                ~sigla_abs,
+  "1 -   Até 14 anos de idade", "ocup_agro_ate14_pct", "ocup_agro_ate14_abs"  # Menores de 14 anos de idade
+)
+
+df_trab_infantil_long <- extrair_abrinq_mun(caminho_ti_agro, abas_ti_agro)
+cli_alert_success("Trabalho infantil (5 a 17 anos), Lista TIP e ocupação agropecuária processado(s).")
+
+## 5.15.6 Casamentos de crianças e adolescentes do sexo feminino ----
+# Decisão D-007 (Kattine, 16/11/2026): "-" = 0 casamento. Em PE a soma dos municípios
+# bate com a UF em todos os anos (2003-2024).
+
+caminho_casamentos <- file.path(DIR_RAW_AURORA, "cidadania/Número de casamentos registrados crianças e adolescentes do sexo feminino.xlsx")
+
+abas_casamentos <- tribble(
+  ~aba,                              ~sigla,                      ~sigla_abs,
+  "1 -   Número de casamentos de m", "casamento_fem_ate19_total", NA_character_,  # Total de casamentos de meninas menores de 19 anos
+  "2 -   15 a 19 anos de idade",     "casamento_fem_15_19",       NA_character_,  # 15 a 19 anos
+  "3 -   Até 15 anos de idade",      "casamento_fem_ate15",       NA_character_  # Menores de 15 anos
+)
+
+df_casamentos_long <- extrair_abrinq_mun(caminho_casamentos, abas_casamentos, traco_como_zero = TRUE)
+cli_alert_success("Casamentos de crianças e adolescentes do sexo feminino processado(s).")
+
+## 5.15.7 Óbitos por suicídio de indivíduos até 19 anos ----
+# Decisão D-008 (Kattine, 17/11/2026): "-" = 0 óbito (a soma das categorias bate com o total).
+# O total até 19 anos sai só da planilha por escolaridade.
+
+caminho_suic_escol <- file.path(DIR_RAW_AURORA, "saude/Número de óbitos de indivíduos de até 19 anos de idade por suicídio segundo escolaridade.xlsx")
+caminho_suic_sexo <- file.path(DIR_RAW_AURORA, "saude/Número de óbitos de indivíduos de até 19 anos de idade por suicídio segundo sexo.xlsx")
+caminho_suic_cor <- file.path(DIR_RAW_AURORA, "saude/Número de óbitos de indivíduos de até 19 anos de idade por suicídio segundo cor_raça.xlsx")
+caminho_suic_idade <- file.path(DIR_RAW_AURORA, "saude/Número de óbitos de indivíduos de até 19 anos de idade por suicídio segundo grupos etários.xlsx")
+
+abas_suic_escol <- tribble(
+  ~aba,                              ~sigla,                          ~sigla_abs,
+  "1 -   Número de óbitos de indiv", "suicidio_ate19_total",          NA_character_,  # Número de óbitos de indivíduos de até 19 anos de idade por suicídio
+  "5 -   Nenhuma escolaridade",      "suicidio_ate19_escol_nenhuma",  NA_character_,  # Nenhuma escolaridade
+  "3 -   1 a 3 de anos",             "suicidio_ate19_escol_1_3",      NA_character_,  # 1 a 3 de anos
+  "6 -   4 a 7 anos",                "suicidio_ate19_escol_4_7",      NA_character_,  # 4 a 7 anos
+  "4 -   8 a 11 anos",               "suicidio_ate19_escol_8_11",     NA_character_,  # 8 a 11 anos
+  "7 -   12 anos e mais",            "suicidio_ate19_escol_12_mais",  NA_character_,  # 12 anos e mais
+  "2 -   Escolaridade ignorada",     "suicidio_ate19_escol_ignorada", NA_character_  # Escolaridade ignorada
+)
+
+abas_suic_sexo <- tribble(
+  ~aba,              ~sigla,                          ~sigla_abs,
+  "1 -   Feminino",  "suicidio_ate19_sexo_feminino",  NA_character_,  # Feminino
+  "2 -   Masculino", "suicidio_ate19_sexo_masculino", NA_character_  # Masculino
+)
+
+abas_suic_cor <- tribble(
+  ~aba,                      ~sigla,                        ~sigla_abs,
+  "3 -   Branca",            "suicidio_ate19_cor_branca",   NA_character_,  # Branca
+  "4 -   Preta",             "suicidio_ate19_cor_preta",    NA_character_,  # Preta
+  "7 -   Parda",             "suicidio_ate19_cor_parda",    NA_character_,  # Parda
+  "5 -   Amarela",           "suicidio_ate19_cor_amarela",  NA_character_,  # Amarela
+  "2 -   Indígena",          "suicidio_ate19_cor_indigena", NA_character_,  # Indígena
+  "1 -   Cor raça ignorada", "suicidio_ate19_cor_ignorada", NA_character_  # Cor/raça ignorada
+)
+
+abas_suic_idade <- tribble(
+  ~aba,                              ~sigla,                       ~sigla_abs,
+  "1 - Número de óbitos de criança", "suicidio_ate19_idade_5_9",   NA_character_,  # 5 a 9 anos de idade
+  "13 - Número de óbitos de crianç", "suicidio_ate19_idade_10_14", NA_character_,  # 10 a 14 anos de idade
+  "6 - Número de óbitos de criança", "suicidio_ate19_idade_15_19", NA_character_  # 15 a 19 anos de idade
+)
+
+df_suicidio_long <- bind_rows(
+  extrair_abrinq_mun(caminho_suic_escol, abas_suic_escol, traco_como_zero = TRUE),
+  extrair_abrinq_mun(caminho_suic_sexo, abas_suic_sexo, traco_como_zero = TRUE),
+  extrair_abrinq_mun(caminho_suic_cor, abas_suic_cor, traco_como_zero = TRUE),
+  extrair_abrinq_mun(caminho_suic_idade, abas_suic_idade, traco_como_zero = TRUE)
+) %>%
+  # Decisão D-009 (Kattine, 17/11/2026): na planilha por grupos etários, 2007 é cópia de 2008 e
+  # 2020 diverge das outras três planilhas (PE: 34 contra 25). Os dois anos ficam de fora.
+  filter(!(str_starts(sigla_indicador, "suicidio_ate19_idade_") & ano %in% c(2007, 2020)))
+cli_alert_success("Óbitos por suicídio de indivíduos até 19 anos processado(s).")
+
+## 5.15.8 Notificações de lesões autoprovocadas de crianças e adolescentes até 19 anos ----
+# Decisão D-010 (Kattine, 18/11/2026): "-" = 0 notificação (a soma das categorias bate com o total).
+# O total até 19 anos sai só da planilha por cor/raça.
+
+caminho_lesao_cor <- file.path(DIR_RAW_AURORA, "saude/Notificações de lesões autoprovocadas de crianças e adolescentes de até 19 anos de idade segundo cor_raça.xlsx")
+caminho_lesao_sexo <- file.path(DIR_RAW_AURORA, "saude/Notificações de lesões autoprovocadas de crianças e adolescentes de até 19 anos de idade segundo sexo.xlsx")
+caminho_lesao_escol <- file.path(DIR_RAW_AURORA, "saude/Notificações de lesões autoprovocadas de crianças e adolescentes de até 19 anos de idade segundo escolaridade.xlsx")
+caminho_lesao_idade <- file.path(DIR_RAW_AURORA, "saude/Notificações de lesões autoprovocadas segundo grupos etários.xlsx")
+
+abas_lesao_cor <- tribble(
+  ~aba,                              ~sigla,                              ~sigla_abs,
+  "3 -   Notificações de lesões au", "lesao_autoprov_ate19_total",        NA_character_,  # Notificações de lesões autoprovocadas de crianças e adolescentes de até 19 anos de idade
+  "7 -   Branca",                    "lesao_autoprov_ate19_cor_branca",   NA_character_,  # Branca
+  "4 -   Preta",                     "lesao_autoprov_ate19_cor_preta",    NA_character_,  # Preta
+  "1 -   Parda",                     "lesao_autoprov_ate19_cor_parda",    NA_character_,  # Parda
+  "6 -   Amarela",                   "lesao_autoprov_ate19_cor_amarela",  NA_character_,  # Amarela
+  "2 -   Indígena",                  "lesao_autoprov_ate19_cor_indigena", NA_character_,  # Indígena
+  "5 -   Cor raça ignorada",         "lesao_autoprov_ate19_cor_ignorada", NA_character_  # Cor/raça ignorada
+)
+
+abas_lesao_sexo <- tribble(
+  ~aba,                  ~sigla,                                ~sigla_abs,
+  "2 -   Feminino",      "lesao_autoprov_ate19_sexo_feminino",  NA_character_,  # Feminino
+  "4 -   Masculino",     "lesao_autoprov_ate19_sexo_masculino", NA_character_,  # Masculino
+  "3 -   Sexo ignorado", "lesao_autoprov_ate19_sexo_ignorado",  NA_character_  # Sexo ignorado
+)
+
+abas_lesao_escol <- tribble(
+  ~aba,                              ~sigla,                                         ~sigla_abs,
+  "8 -   Analfabeto",                "lesao_autoprov_ate19_escol_analfabeto",        NA_character_,  # Analfabeto
+  "4 -   1ª a 4ª série incompleta ", "lesao_autoprov_ate19_escol_ef_1_4_incompleta", NA_character_,  # 1ª a 4ª série incompleta do Ensino Fundamental
+  "5 -   4ª série completa do Ensi", "lesao_autoprov_ate19_escol_ef_4_completa",     NA_character_,  # 4ª série completa do Ensino Fundamental
+  "11 -   5ª a 8ª série incompleta", "lesao_autoprov_ate19_escol_ef_5_8_incompleta", NA_character_,  # 5ª a 8ª série incompleta do Ensino Fundamental
+  "10 -   Ensino Fundamental compl", "lesao_autoprov_ate19_escol_ef_completo",       NA_character_,  # Ensino Fundamental completo
+  "2 -   Ensino Médio incompleto",   "lesao_autoprov_ate19_escol_em_incompleto",     NA_character_,  # Ensino Médio incompleto
+  "9 -   Ensino Médio completo",     "lesao_autoprov_ate19_escol_em_completo",       NA_character_,  # Ensino Médio completo
+  "3 -   Educação Superior incompl", "lesao_autoprov_ate19_escol_sup_incompleta",    NA_character_,  # Educação superior incompleta
+  "1 -   Educação Superior complet", "lesao_autoprov_ate19_escol_sup_completa",      NA_character_,  # Educação superior completa
+  "6 -   Não se aplica",             "lesao_autoprov_ate19_escol_nao_se_aplica",     NA_character_,  # Não se aplica
+  "12 -   Escolaridade ignorada",    "lesao_autoprov_ate19_escol_ignorada",          NA_character_  # Escolaridade ignorada
+)
+
+abas_lesao_idade <- tribble(
+  ~aba,                              ~sigla,                               ~sigla_abs,
+  "9 - Número de casos entre crian", "lesao_autoprov_ate19_idade_menor_1", NA_character_,  # Menores de 1 ano de idade
+  "7 - Número de casos entre crian", "lesao_autoprov_ate19_idade_1_4",     NA_character_,  # 1 a 4 anos de idade
+  "1 - Número de casos entre crian", "lesao_autoprov_ate19_idade_5_9",     NA_character_,  # 5 a 9 anos de idade
+  "2 - Número de casos entre crian", "lesao_autoprov_ate19_idade_10_14",   NA_character_,  # 10 a 14 anos de idade
+  "6 - Número de casos entre crian", "lesao_autoprov_ate19_idade_15_19",   NA_character_  # 15 a 19 anos de idade
+)
+
+df_lesoes_long <- bind_rows(
+  extrair_abrinq_mun(caminho_lesao_cor, abas_lesao_cor, traco_como_zero = TRUE),
+  extrair_abrinq_mun(caminho_lesao_sexo, abas_lesao_sexo, traco_como_zero = TRUE),
+  extrair_abrinq_mun(caminho_lesao_escol, abas_lesao_escol, traco_como_zero = TRUE),
+  extrair_abrinq_mun(caminho_lesao_idade, abas_lesao_idade, traco_como_zero = TRUE)
+) %>%
+  # Decisão D-011 (Kattine, 18/11/2026): na planilha por sexo, 2024 é cópia de 2023 na fonte.
+  filter(!(str_starts(sigla_indicador, "lesao_autoprov_ate19_sexo_") & ano == 2024))
+cli_alert_success("Notificações de lesões autoprovocadas de crianças e adolescentes até 19 anos processado(s).")
+
+## 5.15.9 Consolidação Abrinq (sigla -> nm_indicador da lista) ----
+df_abrinq_indicadores_long <- bind_rows(
+  df_obitos_mat_long,
+  df_acid_trab_long,
+  df_mort_sanea_long,
+  df_trab_infantil_long,
+  df_casamentos_long,
+  df_suicidio_long,
+  df_lesoes_long
+) %>%
+  left_join(
+    lista_de_indicadores %>% distinct(sigla_indicador, .keep_all = TRUE) %>% select(sigla_indicador, nm_indicador),
+    by = "sigla_indicador"
+  ) %>%
+  select(cod_municipio, nm_municipio, ano, nm_indicador, indicador, mes_referencia)
+
+if (any(is.na(df_abrinq_indicadores_long$nm_indicador))) {
+  cli_alert_warning("Há siglas Abrinq sem cadastro na lista de indicadores (aba Municípios).")
+}
+cli_alert_success("Indicadores Abrinq consolidados: {nrow(df_abrinq_indicadores_long)} registros.")
+
 # ------------------------------------------------------------------------------
 # 6. EMPILHAMENTO E ENRIQUECIMENTO METADADOS
 # ------------------------------------------------------------------------------
@@ -772,7 +1126,9 @@ df_indicadores_empilhados <- bind_rows(
   df_rais_long,
   df_cresc_hightec_long,
   df_comex_long,
-  df_anatel_long
+  df_anatel_long,
+  df_peso_ideal_long,
+  df_abrinq_indicadores_long
 ) %>%
   left_join(
     lista_de_indicadores %>% distinct(nm_indicador, .keep_all = TRUE),
@@ -782,6 +1138,8 @@ df_indicadores_empilhados <- bind_rows(
   mutate(
     nm_municipio = str_remove(nm_municipio, " \\(PE\\)| - [A-Z]{2}$"),
     indicador = case_when(
+      # já vêm em % (0 a 100): não aplicar a conversão de proporção (0-1) para %
+      sigla_indicador %in% c("peso_abaixo_5_10_pct", "ocup_agro_ate14_pct") ~ indicador,
       tipo == "percentual" & suppressWarnings(as.numeric(indicador)) > 0 & suppressWarnings(as.numeric(indicador)) <= 1 ~ as.character(as.numeric(indicador) * 100),
       sigla_indicador %in% c("pib_pct", "pct_agua_rede", "pct_esgoto_rede") ~ as.character(round(as.numeric(indicador), 2)),
       TRUE ~ indicador
